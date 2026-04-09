@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/forgen"><img src="https://img.shields.io/npm/v/forgen.svg" alt="npm version"/></a>
+  <a href="https://www.npmjs.com/package//forgen"><img src="https://img.shields.io/npm/v//forgen.svg" alt="npm version"/></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"/></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg" alt="Node.js >= 20"/></a>
 </p>
@@ -57,7 +57,7 @@ Forgen makes this happen. It profiles your work style, learns from your correcti
 ### First run (one time, ~1 minute)
 
 ```bash
-npm install -g forgen
+npm install -g /forgen
 forgen
 ```
 
@@ -117,7 +117,7 @@ Updated rules are rendered with your corrections included. Compound knowledge is
 
 ```bash
 # 1. Install
-npm install -g forgen
+npm install -g /forgen
 
 # 2. First run — 4-question onboarding (English or Korean)
 forgen

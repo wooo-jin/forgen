@@ -1,5 +1,5 @@
 {
-  "name": "forgen",
+  "name": "@wooojin/forgen",
   "version": "0.1.0",
   "main": "dist/lib.js",
   "types": "./dist/lib.d.ts",

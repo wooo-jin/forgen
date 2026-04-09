@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/forgen"><img src="https://img.shields.io/npm/v/forgen.svg" alt="npm version"/></a>
+  <a href="https://www.npmjs.com/package//forgen"><img src="https://img.shields.io/npm/v//forgen.svg" alt="npm version"/></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"/></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg" alt="Node.js >= 20"/></a>
 </p>
@@ -57,7 +57,7 @@ forgen가 이것을 가능하게 합니다. 작업 스타일을 프로파일링�
 ### 첫 실행 (1회, 약 1분)
 
 ```bash
-npm install -g forgen
+npm install -g /forgen
 forgen
 ```
 
@@ -117,7 +117,7 @@ Claude가 `correction-record` MCP 도구를 호출합니다. 교정은 축 분�
 
 ```bash
 # 1. 설치
-npm install -g forgen
+npm install -g /forgen
 
 # 2. 첫 실행 — 4문항 온보딩 (영어/한국어 선택)
 forgen
