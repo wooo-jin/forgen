@@ -1,0 +1,116 @@
+#!/usr/bin/env node
+/**
+ * Forgen — Slop Detector Hook (PostToolUse)
+ *
+ * Write/Edit 도구 실행 후 결과물에서 AI 슬롭 패턴을 감지합니다.
+ * - TODO 주석 잔류, eslint-disable, @ts-expect-error, as any 등
+ * - Empty catch blocks, unnecessary comments, console.log debug code
+ */
+
+import { readStdinJSON } from './shared/read-stdin.js';
+import { createLogger } from '../core/logger.js';
+import { isHookEnabled, loadHookConfig } from './hook-config.js';
+import { approve, approveWithWarning, failOpen } from './shared/hook-response.js';
+
+const log = createLogger('slop-detector');
+
+interface PostToolInput {
+  tool_name?: string;
+  toolName?: string;
+  tool_input?: Record<string, unknown>;
+  toolInput?: Record<string, unknown>;
+  tool_response?: string;
+  toolOutput?: string;
+  session_id?: string;
+}
+
+export const SLOP_PATTERNS: Array<{ pattern: RegExp; message: string; severity: 'warn' | 'info' }> = [
+  { pattern: /\/\/\s*TODO:?\s*(implement|add|fix|handle)/i, message: 'Leftover TODO comment', severity: 'warn' },
+  { pattern: /\/\/\s*eslint-disable/i, message: 'eslint-disable comment', severity: 'warn' },
+  { pattern: /\/\/\s*@ts-ignore/i, message: '@ts-ignore comment', severity: 'warn' },
+  { pattern: /as\s+any\b/g, message: '"as any" type assertion', severity: 'warn' },
+  { pattern: /console\.(log|debug|info)\(/g, message: 'console.log debug code', severity: 'info' },
+  { pattern: /catch\s*\([^)]*\)\s*\{\s*\}/m, message: 'Empty catch block', severity: 'warn' },
+  { pattern: /\/\*\*[\s\S]*?\*\/\s*\n\s*(\/\*\*[\s\S]*?\*\/)/m, message: 'Duplicate JSDoc', severity: 'info' },
+  { pattern: /^\s*\/\/\s*(This|The|We|Here|Note:)\s/m, message: 'Unnecessary explanatory comment', severity: 'info' },
+];
+
+/** 텍스트에서 슬롭 패턴을 감지하여 메시지 목록 반환 (순수 함수) */
+export function detectSlop(text: string): Array<{ message: string; severity: 'warn' | 'info' }> {
+  const found: Array<{ message: string; severity: 'warn' | 'info' }> = [];
+  const seen = new Set<string>();
+
+  for (const entry of SLOP_PATTERNS) {
+    // RegExp에 g 플래그가 있으면 lastIndex 리셋
+    entry.pattern.lastIndex = 0;
+    if (entry.pattern.test(text) && !seen.has(entry.message)) {
+      seen.add(entry.message);
+      found.push({ message: entry.message, severity: entry.severity });
+    }
+  }
+
+  return found;
+}
+
+async function main(): Promise<void> {
+  const data = await readStdinJSON<PostToolInput>();
+
+  if (!isHookEnabled('slop-detector')) {
+    console.log(approve());
+    return;
+  }
+
+  // maxAllowedPatterns: config에서 읽거나 기본값(0 = 1개라도 있으면 경고) 사용
+  const config = loadHookConfig('slop-detector');
+  const maxAllowedPatterns =
+    typeof config?.maxAllowedPatterns === 'number' ? config.maxAllowedPatterns : 0;
+  if (!data) {
+    console.log(approve());
+    return;
+  }
+
+  const toolName = data.tool_name ?? data.toolName ?? '';
+
+  // Write/Edit 도구일 때만 검사
+  if (toolName !== 'Write' && toolName !== 'Edit') {
+    console.log(approve());
+    return;
+  }
+
+  const toolResponse = data.tool_response ?? data.toolOutput ?? '';
+  const toolInput = data.tool_input ?? data.toolInput ?? {};
+
+  // 검사 대상: 도구 입력의 content/new_string + 도구 응답
+  const textsToCheck: string[] = [];
+  if (typeof toolInput.content === 'string') textsToCheck.push(toolInput.content);
+  if (typeof toolInput.new_string === 'string') textsToCheck.push(toolInput.new_string);
+  if (toolResponse) textsToCheck.push(toolResponse);
+
+  const combined = textsToCheck.join('\n');
+  if (!combined) {
+    console.log(approve());
+    return;
+  }
+
+  try {
+    const detected = detectSlop(combined);
+
+    if (detected.length > maxAllowedPatterns) {
+      const lines = detected.map(d => {
+        const icon = d.severity === 'warn' ? '⚠' : 'ℹ';
+        return `- ${icon} ${d.message}`;
+      });
+      console.log(approveWithWarning(`<compound-slop-warning>\n[Forgen] AI slop detected:\n${lines.join('\n')}\nCleanup recommended.\n</compound-slop-warning>`));
+    } else {
+      console.log(approve());
+    }
+  } catch (e) {
+    log.debug('슬롭 감지 실패', e);
+    console.log(failOpen());
+  }
+}
+
+main().catch((e) => {
+  process.stderr.write(`[ch-hook] ${e instanceof Error ? e.message : String(e)}\n`);
+  console.log(failOpen());
+});

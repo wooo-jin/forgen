@@ -1,0 +1,117 @@
+---
+name: compound
+description: This skill should be used when the user asks to "복리화,compound,패턴 추출,솔루션 축적,what did we learn". Compound Engineering — extract reusable patterns from this session's work
+model: inherit
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - mcp__forgen-compound__compound-search
+  - mcp__forgen-compound__compound-read
+  - mcp__forgen-compound__compound-list
+  - mcp__forgen-compound__compound-stats
+triggers:
+  - "복리화"
+  - "compound"
+  - "패턴 추출"
+  - "솔루션 축적"
+  - "what did we learn"
+  - "배운 것 정리"
+---
+
+<Purpose>
+이 세션에서 수행한 작업을 분석하여 재사용 가능한 지식을 추출하고 축적합니다.
+당신은 이 대화의 전체 맥락을 갖고 있으므로, git diff만으로는 알 수 없는 "왜"를 포함할 수 있습니다.
+참고: CLI `forgen compound`는 최근 코드/세션을 자동 분석한 결과를 미리보기하고, `--save`일 때만 저장합니다. 이 slash skill은 대화 전체 맥락을 바탕으로 수동 추출할 때 사용합니다.
+</Purpose>
+
+<Steps>
+## Phase 1: 세션 분석
+
+이 세션의 대화를 돌아보며 다음을 식별하세요:
+
+### 솔루션 (재사용 가능한 패턴)
+- 어떤 기술적 결정을 내렸는가? 왜?
+- 어떤 접근법이 효과적이었는가?
+- 시도했다가 실패한 것은? (anti-pattern)
+- 반복될 수 있는 패턴이 있는가?
+
+### 트러블슈팅 (문제 해결 지식)
+- 어떤 에러/문제를 만났는가?
+- 근본 원인은 무엇이었는가?
+- 해결 방법은?
+- 다음에 같은 문제를 만나면 바로 적용할 수 있는 해결 절차는?
+
+### 의사결정 (선택의 근거)
+- 기술 스택/라이브러리 선택의 이유
+- 아키텍처 결정의 배경
+- 트레이드오프와 그 판단 근거
+
+### 안티패턴 (피해야 할 것)
+- 이 세션에서 시도했다가 실패한 접근법은?
+- 왜 실패했는가? (근본 원인)
+- 다음에 같은 실수를 피하려면?
+
+### 영향 범위 분석
+- 이 변경/결정이 다른 모듈/파일에 미치는 영향은?
+- 의존하는 코드가 깨질 수 있는가?
+- 어떤 테스트가 추가로 필요한가?
+
+### 기존 항목 교차 참조
+축적 전에 기존 compound 항목과 비교하세요:
+```bash
+forgen compound list
+```
+- 이미 유사한 솔루션/규칙이 있는가? → 업데이트 또는 보완
+- 기존 항목과 모순되는가? → 둘 다 기록하고 비교
+
+### 확신도 자기 평가
+각 추출 항목에 대해 확신도를 평가하세요:
+- **높음**: 명확한 인과관계, 반복 검증됨
+- **중간**: 합리적 추론, 1회 검증
+- **낮음**: 가설 수준, 추가 검증 필요
+
+## Phase 2: 품질 게이트
+
+추출 전 각 항목을 검증하세요:
+
+1. **재사용 가능한가?** — 이 프로젝트에만 해당하는 것은 제외 (scope: project로 표시)
+2. **구체적인가?** — "좋은 코드를 작성하자" 같은 일반론은 제외
+3. **실행 가능한가?** — 다음에 적용할 수 있는 구체적 내용이 있는가?
+4. **독성이 없는가?** — @ts-ignore, --force, 임시 우회 같은 패턴은 제외
+
+## Phase 3: 축적
+
+추출한 각 인사이트를 CLI 명령어로 저장합니다:
+
+```bash
+# 솔루션 (재사용 가능한 패턴)
+forgen compound --solution "제목" "왜 이 접근법을 사용했고, 언제 적용하는지 포함한 상세 설명"
+
+# 트러블슈팅 (에러 → 원인 → 해결)
+forgen compound --solution "에러명-해결법" "에러 상황, 근본 원인, 해결 절차를 포함"
+
+# 의사결정 (선택의 근거)
+forgen compound --solution "기술선택-이유" "어떤 대안이 있었고 왜 이것을 선택했는지"
+
+# 안티패턴 (피해야 할 것)
+forgen compound --solution "피해야-할-패턴" "왜 이 접근이 실패했고 대신 무엇을 해야 하는지"
+```
+
+**중요**:
+- 각 솔루션의 내용에 **"왜"**를 반드시 포함하세요
+- 제목은 구체적으로 (예: "React-useCallback-memo-최적화" O, "성능개선" X)
+- 내용은 다른 세션에서 이 솔루션을 보고 바로 적용할 수 있을 정도로 상세하게
+- 단순 타이포/1줄 수정 세션이면 → "복리화 불필요" 후 종료
+
+## Phase 4: 리포트
+
+```
+📊 세션 복리화 완료
+├─ 추출: N개 솔루션
+├─ 유형: pattern X개, troubleshoot Y개, decision Z개
+└─ 저장: ~/.forgen/me/solutions/
+```
+</Steps>
+
+$ARGUMENTS
