@@ -182,14 +182,63 @@ forgen
 
 ### Compound knowledge
 
-Knowledge accumulates across sessions and becomes searchable:
+Knowledge accumulates across sessions with a trust-based lifecycle:
+
+```
+experiment (0.30) → candidate (0.55) → verified (0.75) → mature (0.90)
+```
+
+Each solution starts as an `experiment`. As it gets reflected in your code across sessions, it's automatically promoted. Negative evidence triggers a circuit breaker (auto-retire). This means only patterns that actually work for you survive.
 
 | Type | Source | How Claude uses it |
 |------|--------|--------------------|
-| **Solutions** | Extracted from sessions | `compound-search` via MCP |
-| **Skills** | Promoted from verified solutions | Auto-loaded as slash commands |
+| **Solutions** | Extracted from sessions | Auto-injected when relevant to your prompt (TF-IDF + BM25 + bigram ensemble) |
+| **Skills** | 21 built-in + promoted from verified solutions | Activated by keyword (`specify`, `deep-interview`, `tdd`, etc.) |
 | **Behavioral patterns** | Auto-detected at 3+ observations | Applied to `forge-behavioral.md` |
-| **Evidence** | Corrections + observations | Drives facet adjustments |
+| **Evidence** | Corrections + observations | Drives facet adjustments + rule creation |
+
+### Solution auto-injection
+
+Every prompt you type is matched against your accumulated solutions. Relevant ones are automatically injected into Claude's context — no manual lookup needed.
+
+```
+You type: "fix the error handling in the API"
+                    ↓
+solution-injector matches: starter-error-handling-patterns (0.70)
+                    ↓
+Claude sees: "Matched solutions: error-handling-patterns [pattern|0.70]
+             Use try/catch with specific error types. Always log original error..."
+                    ↓
+Claude writes better error handling code, informed by your accumulated patterns.
+```
+
+### 21 built-in skills
+
+Activate with a keyword in your prompt:
+
+| Skill | Trigger | What it does |
+|-------|---------|-------------|
+| `specify` | "specify", "명세" | Structures requirements as Resolved/Provisional/Unresolved with readiness % |
+| `deep-interview` | "deep-interview" | Deep requirement interview with Ambiguity Score (0-10) per topic |
+| `code-review` | "code review 해줘" | 20-item checklist review with severity ratings |
+| `tdd` | "tdd 해줘" | Red-Green-Refactor test-driven development |
+| `debug-detective` | "debug-detective" | Reproduce → Isolate → Fix → Verify loop |
+| `refactor` | "refactor 시작" | Test-first safe refactoring |
+| `git-master` | "git-master" | Atomic commits + clean history management |
+| `security-review` | "security review" | OWASP Top 10 vulnerability check |
+| `ecomode` | "ecomode", "에코 모드" | Token-saving mode |
+| `migrate` | "migrate 해줘", "마이그레이션 시작" | 5-phase safe migration workflow |
+| ... | | 11 more (api-design, architecture-decision, ci-cd, database, docker, documentation, frontend, incident-response, performance, testing-strategy, compound) |
+
+### Session management
+
+| Feature | What happens |
+|---------|-------------|
+| **Session brief** | Before context compaction, a structured brief is saved and restored in the next session |
+| **Drift detection** | EWMA-based edit rate tracking → warning at 15 edits, critical at 30, hard stop at 50 |
+| **Agent output validation** | When Claude spawns sub-agents, their output quality is automatically verified |
+| **Auto-compact** | At 120K chars accumulated, Claude is instructed to compact context |
+| **Pending compound** | After 20+ prompt sessions, a compound extraction is auto-triggered next session |
 
 ---
 
@@ -337,6 +386,12 @@ forgen me                       # Personal dashboard (shortcut for inspect profi
 ```bash
 forgen compound                 # Preview accumulated knowledge
 forgen compound --save          # Save auto-analyzed patterns
+forgen compound list            # List all solutions with status
+forgen compound inspect <name>  # Show full solution details
+forgen compound --lifecycle     # Run promotion/demotion check
+forgen compound --verify <name> # Manually promote to verified
+forgen compound export          # Export knowledge as tar.gz
+forgen compound import <path>   # Import knowledge archive
 forgen skill promote <name>     # Promote a verified solution to a skill
 forgen skill list               # List promoted skills
 ```
@@ -345,10 +400,14 @@ forgen skill list               # List promoted skills
 
 ```bash
 forgen init                     # Initialize project
-forgen doctor                   # System diagnostics
-forgen config hooks             # View hook status
+forgen doctor                   # System diagnostics (10 categories + harness maturity)
+forgen dashboard                # Knowledge overview (6 sections)
+forgen config hooks             # View hook status + context budget
 forgen config hooks --regenerate # Regenerate hooks
-forgen mcp                      # MCP server management
+forgen mcp list                 # List installed MCP servers
+forgen mcp add <name>           # Add MCP server from template
+forgen mcp templates            # Show available templates
+forgen notepad show             # View session notepad
 forgen uninstall                # Remove forgen cleanly
 ```
 
@@ -356,12 +415,14 @@ forgen uninstall                # Remove forgen cleanly
 
 | Tool | Purpose |
 |------|---------|
-| `compound-search` | Search accumulated knowledge by query |
-| `compound-read` | Read full solution content |
-| `compound-list` | List solutions with filters |
-| `compound-stats` | Overview statistics |
+| `compound-search` | Search accumulated knowledge by query (TF-IDF + BM25 + bigram ensemble) |
+| `compound-read` | Read full solution content (Progressive Disclosure Tier 3) |
+| `compound-list` | List solutions with status/type/scope filters |
+| `compound-stats` | Overview statistics by status, type, scope |
 | `session-search` | Search past session conversations (SQLite FTS5, Node.js 22+) |
 | `correction-record` | Record user corrections as structured evidence |
+| `profile-read` | Read current personalization profile |
+| `rule-list` | List active personalization rules by category |
 
 ---
 
@@ -433,10 +494,12 @@ Safety hooks are automatically registered in `settings.json` and run on every to
 | **pre-tool-use** | Before any tool execution | Blocks `rm -rf`, `curl\|sh`, `--force` push, dangerous patterns |
 | **db-guard** | SQL operations | Blocks `DROP TABLE`, `WHERE`-less `DELETE`, `TRUNCATE` |
 | **secret-filter** | File writes and outputs | Warns when API keys, tokens, or credentials are about to be exposed |
-| **slop-detector** | After code generation | Detects TODO remnants, `eslint-disable`, `as any`, `@ts-ignore` |
+| **slop-detector** | After code generation | Detects TODO remnants, `eslint-disable`, `as any`, `@ts-ignore`, empty catch |
 | **prompt-injection-filter** | All inputs | Blocks prompt injection attempts with pattern + heuristic detection |
-| **context-guard** | During session | Warns when approaching context window limit |
+| **context-guard** | During session | Warns at 50 prompts/200K chars, auto-compact at 120K, session handoff |
 | **rate-limiter** | MCP tool calls | Prevents excessive MCP tool invocations |
+| **drift-detector** | File edits | EWMA-based drift score: warning → critical → hard stop at 50 edits |
+| **agent-validator** | Agent tool output | Warns on empty/failed/truncated sub-agent output |
 
 Safety rules are **hard constraints** -- they cannot be overridden by pack selection or corrections. The "Must Not" section in rendered rules is always present regardless of profile.
 
@@ -462,7 +525,7 @@ Safety rules are **hard constraints** -- they cannot be overridden by pack selec
 
 ## Coexistence
 
-Forgen detects other Claude Code plugins (oh-my-claudecode, superpowers, claude-mem) at install time and disables overlapping hooks. Core safety and compound hooks always remain active.
+Forgen detects other Claude Code plugins (oh-my-claudecode, superpowers, claude-mem) at install time and automatically reduces its context injection by 50% ("yielding principle"). Core safety and compound hooks always remain active. Conflicting skills are skipped when another plugin already provides them.
 
 See [Coexistence Guide](docs/guides/with-omc.md) for details.
 

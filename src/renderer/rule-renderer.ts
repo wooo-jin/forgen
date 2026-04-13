@@ -25,7 +25,7 @@ export const DEFAULT_CONTEXT: RenderContext = {
   surface: 'session_start',
   max_rules: 30,
   max_chars: 4000,
-  include_pack_summary: true,
+  include_pack_summary: false,
 };
 
 // ── Output Sections ──
@@ -81,9 +81,10 @@ function dedupeByRenderKey(rules: Rule[]): Rule[] {
 // ── Template ──
 
 function ruleToText(rule: Rule): string {
-  // policy 필드가 이미 사람이 읽을 수 있는 문장이면 그대로 사용
-  // render_key로 템플릿을 찾을 수도 있지만 v1은 policy 직접 사용
-  return rule.policy;
+  // AI-optimized: [category|strength] 태그로 축약하여 토큰 절감
+  // hard 강도는 태그 생략 (Must Not 섹션이 이미 의미를 전달)
+  if (rule.strength === 'hard') return rule.policy;
+  return `[${rule.category}|${rule.strength}] ${rule.policy}`;
 }
 
 function trustPolicySummary(policy: TrustPolicy): string {

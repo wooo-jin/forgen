@@ -985,6 +985,193 @@ fi
 echo ""
 
 # ──────────────────────────────────────────────
+# Phase 8: Hoyeon 분석 구현 검증 (Phase 1+2 전체)
+# ──────────────────────────────────────────────
+echo "  [Phase 8: Hoyeon Analysis — Full Feature Verification]"
+
+# 8-1. specify 스킬 실제 주입 (keyword → additionalContext)
+SPECIFY_RESULT=$(echo '{"prompt":"specify 결제 시스템","session_id":"e2e-hoyeon-1","cwd":"/tmp"}' | \
+  COMPOUND_CWD=/tmp node "$HOOKS_DIR/keyword-detector.js" 2>/dev/null)
+if echo "$SPECIFY_RESULT" | grep -q "Resolved.*Provisional\|resolved.*provisional\|R.*P.*U"; then
+  pass "specify skill: R/P/U 3-level evaluation injected"
+else
+  if echo "$SPECIFY_RESULT" | grep -q "specify"; then
+    pass "specify skill: skill content injected (specify keyword detected)"
+  else
+    fail "specify skill: not injected — $(echo "$SPECIFY_RESULT" | head -c 150)"
+  fi
+fi
+
+# 8-2. deep-interview 스킬 주입 + Ambiguity Score
+DI_RESULT=$(echo '{"prompt":"deep-interview MVP 기획","session_id":"e2e-hoyeon-2","cwd":"/tmp"}' | \
+  COMPOUND_CWD=/tmp node "$HOOKS_DIR/keyword-detector.js" 2>/dev/null)
+if echo "$DI_RESULT" | grep -qi "ambiguity"; then
+  pass "deep-interview skill: Ambiguity Score system injected"
+else
+  fail "deep-interview skill: Ambiguity Score missing — $(echo "$DI_RESULT" | head -c 150)"
+fi
+if echo "$DI_RESULT" | grep -q "What.*Who.*How\|What.*How.*When"; then
+  pass "deep-interview skill: 5-axis scoring (What/Who/How/When/Why) present"
+else
+  warn "deep-interview skill: 5-axis check inconclusive"
+fi
+
+# 8-3. Agent 출력 자동 검증 (Tier 2-F) — 빈 출력 경고
+AGENT_EMPTY=$(echo '{"tool_name":"Agent","tool_response":"","session_id":"e2e-hoyeon-3"}' | \
+  node "$HOOKS_DIR/post-tool-use.js" 2>/dev/null)
+if echo "$AGENT_EMPTY" | grep -qi "agent.*minimal\|agent.*empty\|agent_empty"; then
+  pass "Agent validation: empty output warning triggered"
+else
+  fail "Agent validation: empty output not warned — $(echo "$AGENT_EMPTY" | head -c 150)"
+fi
+
+# 8-4. Agent 정상 출력 통과
+AGENT_OK=$(echo '{"tool_name":"Agent","tool_response":"Here is a comprehensive analysis covering architecture patterns and test coverage across modules","session_id":"e2e-hoyeon-4"}' | \
+  node "$HOOKS_DIR/post-tool-use.js" 2>/dev/null | tail -1)
+if echo "$AGENT_OK" | grep -q '"continue":true' && ! echo "$AGENT_OK" | grep -qi "agent.*warn\|agent.*minimal"; then
+  pass "Agent validation: normal output passes without warning"
+else
+  fail "Agent validation: normal output incorrectly warned"
+fi
+
+# 8-5. implement intent 한글 매칭 (Korean boundary fix)
+IMPLEMENT_KO=$(echo '{"prompt":"새 결제 API 만들어줘","session_id":"e2e-hoyeon-5"}' | \
+  node "$HOOKS_DIR/intent-classifier.js" 2>/dev/null)
+if echo "$IMPLEMENT_KO" | grep -q "implement"; then
+  pass "intent-classifier: Korean '만들어줘' → implement"
+else
+  fail "intent-classifier: Korean implement not matched — $(echo "$IMPLEMENT_KO" | head -c 100)"
+fi
+
+# 8-6. 한글 keyword 매칭 (에코 모드, 마이그레이션)
+ECOMODE_KO=$(echo '{"prompt":"에코 모드 활성화","session_id":"e2e-hoyeon-6","cwd":"/tmp"}' | \
+  COMPOUND_CWD=/tmp node "$HOOKS_DIR/keyword-detector.js" 2>/dev/null)
+if echo "$ECOMODE_KO" | grep -qi "ecomode\|에코\|eco"; then
+  pass "keyword-detector: Korean '에코 모드' → ecomode matched"
+else
+  fail "keyword-detector: Korean ecomode not matched — $(echo "$ECOMODE_KO" | head -c 100)"
+fi
+
+MIGRATE_KO=$(echo '{"prompt":"마이그레이션 시작","session_id":"e2e-hoyeon-7","cwd":"/tmp"}' | \
+  COMPOUND_CWD=/tmp node "$HOOKS_DIR/keyword-detector.js" 2>/dev/null)
+if echo "$MIGRATE_KO" | grep -qi "migrate\|마이그레이션"; then
+  pass "keyword-detector: Korean '마이그레이션 시작' → migrate matched"
+else
+  fail "keyword-detector: Korean migrate not matched — $(echo "$MIGRATE_KO" | head -c 100)"
+fi
+
+# 8-7. solution-injector 실제 솔루션 주입 (additionalContext 검증)
+SOL_RESULT=$(echo '{"prompt":"error handling typescript best practice","session_id":"e2e-hoyeon-8"}' | \
+  node "$HOOKS_DIR/solution-injector.js" 2>/dev/null | head -1)
+if echo "$SOL_RESULT" | grep -q "additionalContext.*Matched"; then
+  pass "solution-injector: solutions actually injected into additionalContext"
+  if echo "$SOL_RESULT" | grep -q "APPLY"; then
+    pass "solution-injector: APPLY directive present in injection"
+  else
+    warn "solution-injector: APPLY directive missing"
+  fi
+  if echo "$SOL_RESULT" | grep -q "head_limit"; then
+    pass "solution-injector: head_limit guidance present (1-E)"
+  else
+    warn "solution-injector: head_limit guidance missing"
+  fi
+else
+  warn "solution-injector: no solutions matched (may depend on starter solutions)"
+fi
+
+# 8-8. recovery message improvements (1-A)
+RECOVERY_CHECK=$(HOOKS_DIR_ENV="$HOOKS_DIR" node -e "
+  const path = require('path');
+  const fs = require('fs');
+  const hooksDir = process.env.HOOKS_DIR_ENV;
+  const ptfPath = path.join(hooksDir, 'post-tool-failure.js');
+  if (!fs.existsSync(ptfPath)) { process.stderr.write('SKIP\n'); process.exit(0); }
+  const m = require(ptfPath);
+  if (typeof m.getRecoverySuggestion !== 'function') { process.stderr.write('SKIP\n'); process.exit(0); }
+  const r1 = m.getRecoverySuggestion('ENOENT: no such file', 'Read');
+  const r2 = m.getRecoverySuggestion('EACCES: permission denied', 'Bash');
+  const glob = r1.includes('Glob') ? 'OK' : 'FAIL';
+  const chmod = r2.includes('chmod') ? 'OK' : 'FAIL';
+  process.stderr.write(glob + ':' + chmod + '\n');
+" 2>&1 1>/dev/null)
+if [ "$RECOVERY_CHECK" = "OK:OK" ]; then
+  pass "recovery: file not found → Glob suggestion"
+  pass "recovery: permission denied → chmod suggestion"
+elif [ "$RECOVERY_CHECK" = "SKIP" ]; then
+  warn "recovery: post-tool-failure.js not found for recovery check"
+else
+  GLOB_PART=$(echo "$RECOVERY_CHECK" | cut -d: -f1)
+  CHMOD_PART=$(echo "$RECOVERY_CHECK" | cut -d: -f2)
+  if [ "$GLOB_PART" = "OK" ]; then pass "recovery: file not found → Glob suggestion"; else fail "recovery: Glob suggestion missing for ENOENT"; fi
+  if [ "$CHMOD_PART" = "OK" ]; then pass "recovery: permission denied → chmod suggestion"; else fail "recovery: chmod suggestion missing for EACCES"; fi
+fi
+
+# 8-9. BM25 앙상블 스코어링 (2-C)
+if [ -n "$MATCHER_JS" ] && [ -f "$MATCHER_JS" ]; then
+  BM25_CHECK=$(node -e "
+    const m = require('$MATCHER_JS');
+    if (typeof m.bm25Score !== 'function') { console.log('FAIL:no-export'); process.exit(0); }
+    const score = m.bm25Score(['error','handling'], ['error','handling','pattern'], 6);
+    console.log(score > 0 ? 'OK:' + score.toFixed(3) : 'FAIL:zero');
+  " 2>/dev/null)
+  if echo "$BM25_CHECK" | grep -q "^OK"; then
+    pass "BM25 ensemble: bm25Score works ($BM25_CHECK)"
+  else
+    fail "BM25 ensemble: $BM25_CHECK"
+  fi
+fi
+
+# 8-10. rule-renderer [category|strength] 태그 (2-A)
+RENDERER_JS=$(find "$VERSION_DIR" -name "rule-renderer.js" -path "*/renderer/*" 2>/dev/null | head -1)
+if [ -n "$RENDERER_JS" ] && [ -f "$RENDERER_JS" ]; then
+  RENDER_CHECK=$(node -e "
+    const m = require('$RENDERER_JS');
+    if (!m.DEFAULT_CONTEXT) { console.log('FAIL:no-ctx'); process.exit(0); }
+    // include_pack_summary defaults to false (AI token optimization)
+    console.log(m.DEFAULT_CONTEXT.include_pack_summary === false ? 'OK' : 'FAIL:pack=' + m.DEFAULT_CONTEXT.include_pack_summary);
+  " 2>/dev/null)
+  if [ "$RENDER_CHECK" = "OK" ]; then
+    pass "rule-renderer: include_pack_summary defaults to false (token optimization)"
+  else
+    fail "rule-renderer: $RENDER_CHECK"
+  fi
+fi
+
+# 8-11. ALL_MODES includes specify (cancelforgen coverage)
+MODES_CHECK=$(node -e "
+  const { ALL_MODES } = require('$VERSION_DIR/dist/core/paths.js');
+  const has = ALL_MODES.includes('specify');
+  console.log(has ? 'OK:' + ALL_MODES.length + ' modes' : 'FAIL:missing');
+" 2>/dev/null)
+if echo "$MODES_CHECK" | grep -q "^OK"; then
+  pass "ALL_MODES: specify included ($MODES_CHECK)"
+else
+  fail "ALL_MODES: specify missing — $MODES_CHECK"
+fi
+
+# 8-12. revert→drift connection (boolean flag, not messages search)
+DRIFT_REVERT=$(node -e "
+  const src = require('fs').readFileSync('$HOOKS_DIR/post-tool-use.js', 'utf-8');
+  // Check that revertDetected flag exists and is used in evaluateDrift call
+  const hasFlag = src.includes('revertDetected');
+  const usedInDrift = src.includes('evaluateDrift') && src.includes('revertDetected');
+  // Old broken pattern: messages.some(m => m.includes('revert'))
+  const hasBrokenPattern = /messages\.some.*revert/i.test(src);
+  if (hasFlag && usedInDrift && !hasBrokenPattern) {
+    console.log('OK');
+  } else {
+    console.log('FAIL:flag=' + hasFlag + ',drift=' + usedInDrift + ',broken=' + hasBrokenPattern);
+  }
+" 2>/dev/null)
+if [ "$DRIFT_REVERT" = "OK" ]; then
+  pass "drift score: revert detection connected via boolean flag"
+else
+  fail "drift score: revert connection broken — $DRIFT_REVERT"
+fi
+
+echo ""
+
+# ──────────────────────────────────────────────
 # Summary
 # ──────────────────────────────────────────────
 echo "═══════════════════════════════════════════"

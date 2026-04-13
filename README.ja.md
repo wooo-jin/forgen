@@ -182,14 +182,63 @@ forgen
 
 ### Compound 知識
 
-知識はセッションを跨いで蓄積され、検索可能になります:
+知識はセッションを跨いで、信頼度ベースのライフサイクルで蓄積されます:
+
+```
+experiment (0.30) → candidate (0.55) → verified (0.75) → mature (0.90)
+```
+
+各ソリューションは `experiment` として始まります。セッションをまたいでコードに反映されるにつれ、自動的に昇格されます。ネガティブなエビデンスはサーキットブレーカーを発動させ（自動リタイア）、実際に機能するパターンだけが残ります。
 
 | 種類 | ソース | Claude の活用方法 |
 |------|--------|------------------|
-| **ソリューション** | セッションから抽出 | MCP 経由の `compound-search` |
-| **スキル** | 検証済みソリューションから昇格 | スラッシュコマンドとして自動ロード |
+| **ソリューション** | セッションから抽出 | プロンプトに関連するものを自動注入（TF-IDF + BM25 + bigram アンサンブル） |
+| **スキル** | 21個の組み込み + 検証済みソリューションから昇格 | キーワードで有効化（`specify`、`deep-interview`、`tdd` など） |
 | **行動パターン** | 3回以上の観察で自動検出 | `forge-behavioral.md` に適用 |
-| **エビデンス** | 修正 + 観察 | ファセット調整の根拠 |
+| **エビデンス** | 修正 + 観察 | ファセット調整 + ルール作成を促進 |
+
+### ソリューション自動注入
+
+入力したプロンプトはすべて、蓄積されたソリューションと照合されます。関連するものはClaudeのコンテキストに自動注入されます — 手動検索は不要です。
+
+```
+入力: "API のエラーハンドリングを修正して"
+                    ↓
+solution-injector がマッチ: starter-error-handling-patterns (0.70)
+                    ↓
+Claude が見るもの: "Matched solutions: error-handling-patterns [pattern|0.70]
+             Use try/catch with specific error types. Always log original error..."
+                    ↓
+Claude が蓄積されたパターンを参照して、より良いエラーハンドリングコードを書く。
+```
+
+### 21個の組み込みスキル
+
+プロンプトにキーワードを含めることで有効化:
+
+| スキル | トリガー | 機能 |
+|-------|---------|------|
+| `specify` | "specify", "명세" | 要件を Resolved/Provisional/Unresolved で整理、準備度 % 付き |
+| `deep-interview` | "deep-interview" | Ambiguity Score (0-10) 付きの深い要件インタビュー |
+| `code-review` | "code review 해줘" | 重大度評価付き20項目チェックリストレビュー |
+| `tdd` | "tdd 해줘" | Red-Green-Refactor テスト駆動開発 |
+| `debug-detective` | "debug-detective" | 再現 → 分離 → 修正 → 検証のループ |
+| `refactor` | "refactor 시작" | テストファーストの安全なリファクタリング |
+| `git-master` | "git-master" | アトミックコミット + クリーンな履歴管理 |
+| `security-review` | "security review" | OWASP Top 10 脆弱性チェック |
+| `ecomode` | "ecomode", "에코 모드" | トークン節約モード |
+| `migrate` | "migrate 해줘", "마이그레이션 시작" | 5フェーズの安全なマイグレーションワークフロー |
+| ... | | 残り11個（api-design, architecture-decision, ci-cd, database, docker, documentation, frontend, incident-response, performance, testing-strategy, compound） |
+
+### セッション管理
+
+| 機能 | 動作 |
+|------|------|
+| **セッションブリーフ** | コンテキスト圧縮前に構造化されたブリーフを保存し、次のセッションで復元 |
+| **ドリフト検出** | EWMA ベースの編集レート追跡 → 15編集で警告、30で危機的、50でハードストップ |
+| **エージェント出力検証** | Claude がサブエージェントを生成すると、その出力品質が自動検証される |
+| **自動コンパクト** | 累積12万文字でコンテキスト圧縮の指示 |
+| **ペンディング compound** | 20回以上のプロンプトセッション後、次のセッションで compound 抽出が自動トリガー |
 
 ---
 
@@ -337,6 +386,12 @@ forgen me                       # パーソナルダッシュボード（inspect
 ```bash
 forgen compound                 # 蓄積された知識をプレビュー
 forgen compound --save          # 自動分析されたパターンを保存
+forgen compound list            # ステータス付きで全ソリューションを一覧表示
+forgen compound inspect <名前>  # ソリューションの詳細を表示
+forgen compound --lifecycle     # 昇格/降格チェックを実行
+forgen compound --verify <名前> # 手動で verified に昇格
+forgen compound export          # 知識を tar.gz でエクスポート
+forgen compound import <パス>   # 知識アーカイブをインポート
 forgen skill promote <名前>     # 検証済みソリューションをスキルに昇格
 forgen skill list               # 昇格されたスキルの一覧
 ```
@@ -345,10 +400,14 @@ forgen skill list               # 昇格されたスキルの一覧
 
 ```bash
 forgen init                     # プロジェクトを初期化
-forgen doctor                   # システム診断
-forgen config hooks             # フック状態を確認
+forgen doctor                   # システム診断（10カテゴリ + ハーネス成熟度）
+forgen dashboard                # 知識概要（6セクション）
+forgen config hooks             # フック状態 + コンテキストバジェットを確認
 forgen config hooks --regenerate # フックを再生成
-forgen mcp                      # MCP サーバー管理
+forgen mcp list                 # インストール済み MCP サーバーを一覧
+forgen mcp add <名前>           # テンプレートから MCP サーバーを追加
+forgen mcp templates            # 利用可能なテンプレートを表示
+forgen notepad show             # セッションノートパッドを表示
 forgen uninstall                # forgen をきれいに削除
 ```
 
@@ -356,12 +415,14 @@ forgen uninstall                # forgen をきれいに削除
 
 | ツール | 目的 |
 |--------|------|
-| `compound-search` | クエリで蓄積された知識を検索 |
-| `compound-read` | ソリューション全文を読む |
-| `compound-list` | フィルタ付きソリューション一覧 |
-| `compound-stats` | 概要統計 |
+| `compound-search` | クエリで蓄積された知識を検索（TF-IDF + BM25 + bigram アンサンブル） |
+| `compound-read` | ソリューション全文を読む（Progressive Disclosure Tier 3） |
+| `compound-list` | ステータス/タイプ/スコープフィルタ付きソリューション一覧 |
+| `compound-stats` | ステータス・タイプ・スコープ別の概要統計 |
 | `session-search` | 過去のセッション会話を検索（SQLite FTS5、Node.js 22+） |
 | `correction-record` | ユーザー修正を構造化されたエビデンスとして記録 |
+| `profile-read` | 現在のパーソナライゼーションプロファイルを読む |
+| `rule-list` | カテゴリ別のアクティブなパーソナライゼーションルールを一覧 |
 
 ---
 
@@ -431,10 +492,12 @@ rule-renderer.ts                     Rule[] を自然言語に変換:
 | **pre-tool-use** | すべてのツール実行前 | `rm -rf`、`curl\|sh`、`--force` push、危険なパターンをブロック |
 | **db-guard** | SQL 操作 | `DROP TABLE`、`WHERE` なし `DELETE`、`TRUNCATE` をブロック |
 | **secret-filter** | ファイル書き込み、出力 | API キー、トークン、認証情報の露出時に警告 |
-| **slop-detector** | コード生成後 | TODO 残骸、`eslint-disable`、`as any`、`@ts-ignore` を検出 |
+| **slop-detector** | コード生成後 | TODO 残骸、`eslint-disable`、`as any`、`@ts-ignore`、空の catch を検出 |
 | **prompt-injection-filter** | すべての入力 | パターン + ヒューリスティックによるプロンプトインジェクションのブロック |
-| **context-guard** | セッション中 | コンテキストウィンドウの上限に近づいた時に警告 |
+| **context-guard** | セッション中 | 50プロンプト/20万文字で警告、12万文字で自動コンパクト、セッションハンドオフ |
 | **rate-limiter** | MCP ツール呼び出し | 過度な MCP ツール呼び出しを防止 |
+| **drift-detector** | ファイル編集 | EWMA ベースのドリフトスコア: 警告 → 危機的 → 50編集でハードストップ |
+| **agent-validator** | エージェントツール出力 | 空/失敗/切り捨てられたサブエージェント出力を警告 |
 
 安全ルールは**ハード制約**です -- パック選択や修正で上書きできません。レンダリングされたルールの「Must Not」セクションは、プロファイルに関係なく常に存在します。
 
@@ -460,7 +523,9 @@ rule-renderer.ts                     Rule[] を自然言語に変換:
 
 ## 共存
 
-forgen はインストール時に他の Claude Code プラグイン（oh-my-claudecode、superpowers、claude-mem）を検出し、重複するフックを無効化します。コアのセーフティフックと compound フックは常にアクティブを維持します。
+forgen はインストール時に他の Claude Code プラグイン（oh-my-claudecode、superpowers、claude-mem）を検出し、コンテキスト注入を自動的に50%削減します（「譲歩原則」）。コアのセーフティフックと compound フックは常にアクティブを維持します。他のプラグインがすでに提供しているスキルは競合を避けるためスキップされます。
+
+詳細は [共存ガイド](docs/guides/with-omc.md) を参照してください。
 
 ---
 

@@ -9,6 +9,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createLogger } from '../core/logger.js';
 import { atomicWriteJSON } from './shared/atomic-write.js';
+import { withFileLockSync } from './shared/file-lock.js';
 import { sanitizeId } from './shared/sanitize-id.js';
 import { incrementEvidence } from '../engine/solution-writer.js';
 import { classifyMatch, shouldAttribute } from '../engine/term-matcher.js';
@@ -18,18 +19,20 @@ import { STATE_DIR } from '../core/paths.js';
 const log = createLogger('post-tool-handlers');
 const CONTEXT_SIGNALS_PATH = path.join(STATE_DIR, 'context-signals.json');
 
-/** 세션의 실패 카운터 증가 (컨텍스트 신호 수집) */
+/** 세션의 실패 카운터 증가 (컨텍스트 신호 수집, lock 보호) */
 export function incrementFailureCounter(sessionId: string): void {
   try {
-    let signals: Record<string, unknown> = {};
-    if (fs.existsSync(CONTEXT_SIGNALS_PATH)) {
-      signals = JSON.parse(fs.readFileSync(CONTEXT_SIGNALS_PATH, 'utf-8'));
-      if (signals.sessionId !== sessionId) signals = {};
-    }
-    signals.sessionId = sessionId;
-    signals.previousFailures = ((signals.previousFailures as number) ?? 0) + 1;
-    signals.updatedAt = new Date().toISOString();
-    atomicWriteJSON(CONTEXT_SIGNALS_PATH, signals);
+    withFileLockSync(CONTEXT_SIGNALS_PATH, () => {
+      let signals: Record<string, unknown> = {};
+      if (fs.existsSync(CONTEXT_SIGNALS_PATH)) {
+        signals = JSON.parse(fs.readFileSync(CONTEXT_SIGNALS_PATH, 'utf-8'));
+        if (signals.sessionId !== sessionId) signals = {};
+      }
+      signals.sessionId = sessionId;
+      signals.previousFailures = ((signals.previousFailures as number) ?? 0) + 1;
+      signals.updatedAt = new Date().toISOString();
+      atomicWriteJSON(CONTEXT_SIGNALS_PATH, signals);
+    });
   } catch (e) { log.debug('context signals write failed — failure count may be lost', e); }
 }
 

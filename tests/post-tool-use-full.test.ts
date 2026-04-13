@@ -14,6 +14,7 @@ import {
   ERROR_PATTERNS,
   detectErrorPattern,
   trackModifiedFile,
+  validateAgentOutput,
 } from '../src/hooks/post-tool-use.js';
 
 describe('post-tool-use - extended', () => {
@@ -117,6 +118,55 @@ describe('post-tool-use - extended', () => {
       const state = { sessionId: 'test', files: {}, toolCallCount: 0 };
       trackModifiedFile(state, '/file.ts', 'Edit');
       expect(state.files['/file.ts'].lastModified).toBeTruthy();
+    });
+  });
+
+  // ── validateAgentOutput (Tier 2-F) ──
+
+  describe('validateAgentOutput', () => {
+    it('빈 출력을 감지한다', () => {
+      const result = validateAgentOutput('');
+      expect(result).not.toBeNull();
+      expect(result!.signal).toBe('agent_empty_output');
+      expect(result!.severity).toBe('warning');
+    });
+
+    it('너무 짧은 출력을 감지한다', () => {
+      const result = validateAgentOutput('OK');
+      expect(result).not.toBeNull();
+      expect(result!.signal).toBe('agent_empty_output');
+    });
+
+    it('정상적인 긴 출력에서는 null 반환', () => {
+      const longOutput = 'Here is a detailed analysis of the codebase. The main entry point is src/index.ts which imports...';
+      expect(validateAgentOutput(longOutput)).toBeNull();
+    });
+
+    it('agent 실패 패턴을 감지한다', () => {
+      const output = 'I couldn\'t find any files matching the pattern. The search returned no results in the repository.';
+      const result = validateAgentOutput(output);
+      expect(result).not.toBeNull();
+      expect(result!.signal).toBe('agent_unable');
+    });
+
+    it('타임아웃 패턴을 감지한다', () => {
+      const output = 'The operation timed out after 30 seconds. The agent was unable to complete the search within the deadline.';
+      const result = validateAgentOutput(output);
+      expect(result).not.toBeNull();
+      expect(result!.signal).toBe('agent_timeout');
+    });
+
+    it('컨텍스트 오버플로우를 감지한다', () => {
+      const output = 'The file is too large to read in its entirety. The context limit exceeded the maximum allowed size for processing.';
+      const result = validateAgentOutput(output);
+      expect(result).not.toBeNull();
+      expect(result!.signal).toBe('agent_context_overflow');
+    });
+
+    it('null/undefined 입력을 안전하게 처리한다', () => {
+      const result = validateAgentOutput(null as unknown as string);
+      expect(result).not.toBeNull();
+      expect(result!.signal).toBe('agent_empty_output');
     });
   });
 });

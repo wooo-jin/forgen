@@ -122,27 +122,24 @@ describe('keyword patterns', () => {
     expect(detectKeyword('ecomode 켜줘')?.keyword).toBe('ecomode');
   });
 
-  it('"리팩토링 시작" → \b가 한글에 작동하지 않아 매칭 안 됨 (알려진 한계)', () => {
-    // "리팩토링"은 한글이므로 \b 경계에서 매칭 실패
-    expect(detectKeyword('리팩토링 시작')).toBeNull();
+  it('한글 "리팩토링 시작"이 매칭된다 (Korean boundary fix)', () => {
+    expect(detectKeyword('리팩토링 시작')?.keyword).toBe('refactor');
   });
 
-  it('"에코 모드" → \b가 한글에 작동하지 않아 매칭 안 됨 (알려진 한계)', () => {
-    // \b word boundary는 한글에서 작동하지 않으므로 한글 전용 키워드는 매칭 실패
-    // "에코 모드", "토큰 절약", "마이그레이션", "리팩터" 등은 \b 한계로 단독 사용 불가
-    expect(detectKeyword('에코 모드 활성화')).toBeNull();
+  it('한글 "에코 모드"가 매칭된다 (Korean boundary fix)', () => {
+    expect(detectKeyword('에코 모드 활성화')?.keyword).toBe('ecomode');
   });
 
-  it('"토큰 절약" → \b가 한글에 작동하지 않아 매칭 안 됨 (알려진 한계)', () => {
-    expect(detectKeyword('토큰 절약 모드 시작')).toBeNull();
+  it('한글 "토큰 절약"이 매칭된다 (Korean boundary fix)', () => {
+    expect(detectKeyword('토큰 절약 모드 시작')?.keyword).toBe('ecomode');
   });
 
-  it('"마이그레이션" → \b가 한글에 작동하지 않아 매칭 안 됨 (알려진 한계)', () => {
-    expect(detectKeyword('마이그레이션 시작')).toBeNull();
+  it('한글 "마이그레이션 시작"이 매칭된다 (Korean boundary fix)', () => {
+    expect(detectKeyword('마이그레이션 시작')?.keyword).toBe('migrate');
   });
 
-  it('"리팩터" → \b가 한글에 작동하지 않아 매칭 안 됨 (알려진 한계)', () => {
-    expect(detectKeyword('리팩터 해줘')).toBeNull();
+  it('한글 "리팩터 해줘"가 매칭된다 (Korean boundary fix)', () => {
+    expect(detectKeyword('리팩터 해줘')?.keyword).toBe('refactor');
   });
 
   it('영문 키워드 migrate + 명시적 동작은 매칭된다', () => {
@@ -159,5 +156,40 @@ describe('keyword patterns', () => {
 
   it('영문 키워드 refactoring 단독은 매칭하지 않는다 (false positive 방지)', () => {
     expect(detectKeyword('refactoring is needed')).toBeNull();
+  });
+
+  // ── specify 키워드 (Tier 2-G) ──
+
+  it('"specify"를 감지한다', () => {
+    const result = detectKeyword('specify 사용자 인증 시스템');
+    expect(result).not.toBeNull();
+    expect(result!.keyword).toBe('specify');
+    expect(result!.type).toBe('skill');
+    expect(result!.skill).toBe('specify');
+  });
+
+  it('"명세"를 감지한다', () => {
+    const result = detectKeyword('명세 결제 API');
+    expect(result).not.toBeNull();
+    expect(result!.keyword).toBe('specify');
+  });
+
+  it('"요구사항 정리"를 감지한다', () => {
+    const result = detectKeyword('요구사항 정리 해줘');
+    expect(result).not.toBeNull();
+    expect(result!.keyword).toBe('specify');
+  });
+
+  it('"deep-interview"를 감지한다', () => {
+    const result = detectKeyword('deep-interview 이커머스 MVP');
+    expect(result).not.toBeNull();
+    expect(result!.keyword).toBe('deep-interview');
+    expect(result!.type).toBe('skill');
+  });
+
+  it('"deep interview" (공백)도 감지한다', () => {
+    const result = detectKeyword('deep interview 시작');
+    expect(result).not.toBeNull();
+    expect(result!.keyword).toBe('deep-interview');
   });
 });

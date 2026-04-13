@@ -37,6 +37,7 @@ function escapeXmlAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 import { atomicWriteJSON } from './shared/atomic-write.js';
+import { withFileLockSync } from './shared/file-lock.js';
 import { FORGEN_HOME, ME_DIR, STATE_DIR } from '../core/paths.js';
 import { KEYWORD_PATTERNS } from './keyword-detector.js';
 import { isHookEnabled } from './hook-config.js';
@@ -84,11 +85,37 @@ function loadSessionCache(sessionId: string): Set<string> {
   return new Set();
 }
 
-function saveSessionCache(sessionId: string, injected: Set<string>): void {
-  atomicWriteJSON(getSessionCachePath(sessionId), {
-    injected: [...injected],
-    updatedAt: new Date().toISOString(),
-  });
+function saveSessionCache(sessionId: string, newSkillNames: string[]): void {
+  const cachePath = getSessionCachePath(sessionId);
+  try {
+    withFileLockSync(cachePath, () => {
+      // Lock 안에서 fresh re-read → merge → write
+      const freshInjected = new Set<string>();
+      try {
+        if (fs.existsSync(cachePath)) {
+          const fresh = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+          const age = fresh.updatedAt ? Date.now() - new Date(fresh.updatedAt).getTime() : Infinity;
+          if (Number.isFinite(age) && age <= 24 * 60 * 60 * 1000) {
+            for (const name of fresh.injected ?? []) freshInjected.add(name);
+          }
+        }
+      } catch { /* fresh re-read 실패 시 빈 set으로 진행 */ }
+
+      for (const name of newSkillNames) freshInjected.add(name);
+
+      atomicWriteJSON(cachePath, {
+        injected: [...freshInjected],
+        updatedAt: new Date().toISOString(),
+      });
+    });
+  } catch (e) {
+    // Lock 실패 시 fail-open: 직접 write (중복 주입 가능성 있지만 기능 차단 안 함)
+    log.debug('skill session cache lock 실패 — fallback write', e);
+    atomicWriteJSON(cachePath, {
+      injected: [...new Set([...loadSessionCache(sessionId), ...newSkillNames])],
+      updatedAt: new Date().toISOString(),
+    });
+  }
 }
 
 /** YAML frontmatter 파싱 (간단한 구현) */
@@ -288,11 +315,10 @@ async function main(): Promise<void> {
   // 최대 제한 적용
   const toInject = matched.slice(0, MAX_SKILLS_PER_SESSION - injected.size);
 
-  // 파일 기반 캐시 업데이트
-  for (const skill of toInject) {
-    injected.add(skill.name);
-  }
-  saveSessionCache(sessionId, injected);
+  // 파일 기반 캐시 업데이트 (lock 보호)
+  const newSkillNames = toInject.map(s => s.name);
+  for (const name of newSkillNames) injected.add(name);
+  saveSessionCache(sessionId, newSkillNames);
 
   // Adaptive budget: 다른 플러그인 감지 시 스킬 주입량 축소
   let skillCap = 3000; // INJECTION_CAPS.skillContentMax 기본값

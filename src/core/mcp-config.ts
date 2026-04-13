@@ -14,6 +14,8 @@ export interface McpServerConfig {
   command: string;
   args: string[];
   env?: Record<string, string>;
+  /** HTTP/SSE transport URL (alternative to command+args) */
+  url?: string;
 }
 
 /** 기본 MCP 서버 템플릿 맵 */
@@ -123,7 +125,11 @@ export async function handleMcp(args: string[]): Promise<void> {
       for (const name of names) {
         const cfg = installed[name];
         console.log(`    ${name}`);
-        console.log(`      command: ${cfg.command} ${cfg.args.join(' ')}`);
+        if (cfg.command) {
+          console.log(`      command: ${cfg.command} ${(cfg.args ?? []).join(' ')}`);
+        } else if (cfg.url) {
+          console.log(`      url: ${cfg.url}`);
+        }
         if (cfg.env && Object.keys(cfg.env).length > 0) {
           console.log(`      env: ${JSON.stringify(cfg.env)}`);
         }

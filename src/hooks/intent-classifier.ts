@@ -27,7 +27,7 @@ interface IntentRule {
 }
 
 const INTENT_RULES: IntentRule[] = [
-  { intent: 'implement', pattern: /(?:만들어|추가해|구현해|생성해|작성해|넣어|create|add|implement|build|write|make)\b/i },
+  { intent: 'implement', pattern: /(?:만들어|추가해|구현해|생성해|작성해|넣어|create|add|implement|build|write|make)(?:\b|(?=[가-힣\s]|$))/i },
   { intent: 'debug', pattern: /(?:에러|버그|안돼|안\s*되|안\s*됨|왜|고쳐|수정해|fix|bug|error|debug|문제|실패|fail|crash|broken)/i },
   { intent: 'refactor', pattern: /(?:리팩토링|리팩터|정리|개선|refactor|clean\s*up|improve|optimize|최적화)/i },
   { intent: 'explain', pattern: /(?:설명|알려|뭐야|뭔가요|어떻게|explain|what\s+is|how\s+does|why\s+does|tell\s+me)/i },

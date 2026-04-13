@@ -358,7 +358,7 @@ async function main(): Promise<void> {
     let contentSnippet = '';
     try {
       const raw = fs.readFileSync(sol.path, 'utf-8');
-      const contentMatch = raw.match(/## Content\n([\s\S]*?)(?:\n## |\n---|\Z)/);
+      const contentMatch = raw.match(/## Content\n([\s\S]*?)(?:\n## |\n---|$)/);
       if (contentMatch) {
         // 코드 블록 제거 후 핵심 텍스트만 추출, 최대 3줄
         const lines = contentMatch[1]

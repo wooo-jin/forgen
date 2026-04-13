@@ -182,14 +182,63 @@ forgen
 
 ### Compound 知识
 
-知识跨会话累积，变为可搜索的:
+知识跨会话累积，遵循基于信任度的生命周期:
+
+```
+experiment (0.30) → candidate (0.55) → verified (0.75) → mature (0.90)
+```
+
+每个解决方案从 `experiment` 开始。随着它在多个会话中被反映到你的代码里，会自动晋升。负面证据触发熔断机制（自动退役）。这意味着只有真正适合你的模式才能留存。
 
 | 类型 | 来源 | Claude 如何使用 |
 |------|------|----------------|
-| **解决方案** | 从会话中提取 | 通过 MCP 的 `compound-search` |
-| **技能** | 从已验证的解决方案晋升 | 作为斜杠命令自动加载 |
+| **解决方案** | 从会话中提取 | 与提示相关时自动注入（TF-IDF + BM25 + bigram 集成） |
+| **技能** | 21个内置 + 从已验证解决方案晋升 | 关键词激活（`specify`、`deep-interview`、`tdd` 等） |
 | **行为模式** | 3次以上观察时自动检测 | 应用到 `forge-behavioral.md` |
-| **证据** | 纠正 + 观察 | 驱动 facet 调整 |
+| **证据** | 纠正 + 观察 | 驱动 facet 调整 + 规则创建 |
+
+### 解决方案自动注入
+
+你输入的每个提示都会与你积累的解决方案进行匹配。相关的解决方案会自动注入 Claude 的上下文 — 无需手动查找。
+
+```
+你输入: "修复 API 中的错误处理"
+                    ↓
+solution-injector 匹配: starter-error-handling-patterns (0.70)
+                    ↓
+Claude 看到: "Matched solutions: error-handling-patterns [pattern|0.70]
+             Use try/catch with specific error types. Always log original error..."
+                    ↓
+Claude 参考你积累的模式，写出更好的错误处理代码。
+```
+
+### 21个内置技能
+
+在提示中包含关键词即可激活:
+
+| 技能 | 触发词 | 功能 |
+|------|--------|------|
+| `specify` | "specify", "명세" | 将需求整理为 Resolved/Provisional/Unresolved，附就绪度 % |
+| `deep-interview` | "deep-interview" | 深度需求访谈，每个主题附 Ambiguity Score (0-10) |
+| `code-review` | "code review 해줘" | 附严重度评级的20条清单审查 |
+| `tdd` | "tdd 해줘" | Red-Green-Refactor 测试驱动开发 |
+| `debug-detective` | "debug-detective" | 复现 → 隔离 → 修复 → 验证循环 |
+| `refactor` | "refactor 시작" | 测试优先的安全重构 |
+| `git-master` | "git-master" | 原子提交 + 清晰历史管理 |
+| `security-review` | "security review" | OWASP Top 10 漏洞检查 |
+| `ecomode` | "ecomode", "에코 모드" | Token 节省模式 |
+| `migrate` | "migrate 해줘", "마이그레이션 시작" | 5阶段安全迁移工作流 |
+| ... | | 另外11个（api-design, architecture-decision, ci-cd, database, docker, documentation, frontend, incident-response, performance, testing-strategy, compound） |
+
+### 会话管理
+
+| 功能 | 发生了什么 |
+|------|-----------|
+| **会话摘要** | 上下文压缩前保存结构化摘要，在下一个会话中恢复 |
+| **漂移检测** | 基于 EWMA 的编辑速率追踪 → 15次编辑警告，30次危急，50次硬停止 |
+| **智能体输出验证** | 当 Claude 生成子智能体时，自动验证其输出质量 |
+| **自动压缩** | 累积12万字符时，指示 Claude 压缩上下文 |
+| **待处理 compound** | 超过20个提示会话后，下一个会话自动触发 compound 提取 |
 
 ---
 
@@ -337,6 +386,12 @@ forgen me                       # 个人仪表盘（inspect profile 的快捷方
 ```bash
 forgen compound                 # 预览累积的知识
 forgen compound --save          # 保存自动分析的模式
+forgen compound list            # 列出所有解决方案及状态
+forgen compound inspect <名称>  # 查看解决方案完整详情
+forgen compound --lifecycle     # 运行晋升/降级检查
+forgen compound --verify <名称> # 手动晋升为 verified
+forgen compound export          # 将知识导出为 tar.gz
+forgen compound import <路径>   # 导入知识归档
 forgen skill promote <名称>     # 将已验证的解决方案晋升为技能
 forgen skill list               # 列出已晋升的技能
 ```
@@ -345,10 +400,14 @@ forgen skill list               # 列出已晋升的技能
 
 ```bash
 forgen init                     # 初始化项目
-forgen doctor                   # 系统诊断
-forgen config hooks             # 查看钩子状态
+forgen doctor                   # 系统诊断（10个类别 + 引擎成熟度）
+forgen dashboard                # 知识概览（6个板块）
+forgen config hooks             # 查看钩子状态 + 上下文预算
 forgen config hooks --regenerate # 重新生成钩子
-forgen mcp                      # MCP 服务器管理
+forgen mcp list                 # 列出已安装的 MCP 服务器
+forgen mcp add <名称>           # 从模板添加 MCP 服务器
+forgen mcp templates            # 显示可用模板
+forgen notepad show             # 查看会话记事本
 forgen uninstall                # 干净地卸载 forgen
 ```
 
@@ -356,12 +415,14 @@ forgen uninstall                # 干净地卸载 forgen
 
 | 工具 | 用途 |
 |------|------|
-| `compound-search` | 按查询搜索累积的知识 |
-| `compound-read` | 读取解决方案全文 |
-| `compound-list` | 带过滤器的解决方案列表 |
-| `compound-stats` | 概览统计 |
+| `compound-search` | 按查询搜索累积的知识（TF-IDF + BM25 + bigram 集成） |
+| `compound-read` | 读取解决方案全文（Progressive Disclosure Tier 3） |
+| `compound-list` | 带状态/类型/范围过滤器的解决方案列表 |
+| `compound-stats` | 按状态、类型、范围的概览统计 |
 | `session-search` | 搜索过去的会话对话（SQLite FTS5，Node.js 22+） |
 | `correction-record` | 将用户纠正记录为结构化证据 |
+| `profile-read` | 读取当前个性化档案 |
+| `rule-list` | 按类别列出活跃的个性化规则 |
 
 ---
 
@@ -431,10 +492,12 @@ rule-renderer.ts                     将 Rule[] 转换为自然语言:
 | **pre-tool-use** | 所有工具执行前 | 拦截 `rm -rf`、`curl\|sh`、`--force` push、危险模式 |
 | **db-guard** | SQL 操作 | 拦截 `DROP TABLE`、无 `WHERE` 的 `DELETE`、`TRUNCATE` |
 | **secret-filter** | 文件写入和输出 | API 密钥、令牌、凭据即将暴露时发出警告 |
-| **slop-detector** | 代码生成后 | 检测 TODO 残留、`eslint-disable`、`as any`、`@ts-ignore` |
+| **slop-detector** | 代码生成后 | 检测 TODO 残留、`eslint-disable`、`as any`、`@ts-ignore`、空 catch 块 |
 | **prompt-injection-filter** | 所有输入 | 基于模式 + 启发式的 prompt 注入拦截 |
-| **context-guard** | 会话中 | 接近上下文窗口限制时发出警告 |
+| **context-guard** | 会话中 | 50个提示/20万字符时警告，12万字符自动压缩，会话交接 |
 | **rate-limiter** | MCP 工具调用 | 防止过度的 MCP 工具调用 |
+| **drift-detector** | 文件编辑 | 基于 EWMA 的漂移评分: 警告 → 危急 → 50次编辑硬停止 |
+| **agent-validator** | 智能体工具输出 | 对空/失败/截断的子智能体输出发出警告 |
 
 安全规则是**硬约束** -- 不能被 pack 选择或纠正覆盖。渲染规则中的 "Must Not" 部分无论档案如何始终存在。
 
@@ -460,7 +523,9 @@ rule-renderer.ts                     将 Rule[] 转换为自然语言:
 
 ## 共存
 
-forgen 在安装时检测其他 Claude Code 插件（oh-my-claudecode、superpowers、claude-mem），并禁用重叠的钩子。核心安全钩子和 compound 钩子始终保持活跃。
+forgen 在安装时检测其他 Claude Code 插件（oh-my-claudecode、superpowers、claude-mem），并自动将上下文注入量减少 50%（"让步原则"）。核心安全钩子和 compound 钩子始终保持活跃。当其他插件已提供相同技能时，forgen 会跳过该技能以避免冲突。
+
+详情请参阅 [共存指南](docs/guides/with-omc.md)。
 
 ---
 

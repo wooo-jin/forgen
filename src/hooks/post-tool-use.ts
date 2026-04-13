@@ -106,6 +106,41 @@ export function detectErrorPattern(text: string): { pattern: RegExp; description
   return null;
 }
 
+// ── Agent output validation (Tier 2-F) ──
+
+export interface AgentValidationResult {
+  signal: string;
+  severity: 'info' | 'warning' | 'error';
+  message: string;
+}
+
+const AGENT_MIN_OUTPUT_LENGTH = 50;
+
+const AGENT_QUALITY_PATTERNS: Array<{ pattern: RegExp; signal: string; severity: 'warning' | 'error'; message: string }> = [
+  { pattern: /I (?:couldn'?t|could not|was unable to|cannot) (?:find|locate|access|determine)/i, signal: 'agent_unable', severity: 'warning', message: 'Agent reported inability to complete the task' },
+  { pattern: /(?:no (?:files?|results?|matches?) found|returned? (?:no|empty|zero) results?)/i, signal: 'agent_no_results', severity: 'warning', message: 'Agent found no results' },
+  { pattern: /(?:timed? ?out|deadline exceeded|execution expired)/i, signal: 'agent_timeout', severity: 'error', message: 'Agent execution may have timed out' },
+  { pattern: /(?:context (?:window|limit) (?:exceeded|reached)|too (?:large|long) to (?:read|process))/i, signal: 'agent_context_overflow', severity: 'warning', message: 'Agent hit context limits — output may be incomplete' },
+];
+
+export function validateAgentOutput(toolResponse: string): AgentValidationResult | null {
+  if (!toolResponse || toolResponse.trim().length < AGENT_MIN_OUTPUT_LENGTH) {
+    return {
+      signal: 'agent_empty_output',
+      severity: 'warning',
+      message: `Agent returned minimal output (${toolResponse?.trim().length ?? 0} chars). Verify the result is usable.`,
+    };
+  }
+
+  for (const p of AGENT_QUALITY_PATTERNS) {
+    if (p.pattern.test(toolResponse)) {
+      return { signal: p.signal, severity: p.severity, message: p.message };
+    }
+  }
+
+  return null;
+}
+
 export function trackModifiedFile(
   state: ModifiedFilesState,
   filePath: string,
@@ -145,6 +180,7 @@ async function main(): Promise<void> {
   modState.toolCallCount = (modState.toolCallCount ?? 0) + 1;
 
   const messages: string[] = [];
+  let revertDetected = false;
 
   // 1. Checkpoint (every 5 calls)
   if (modState.toolCallCount % 5 === 0) {
@@ -190,6 +226,7 @@ async function main(): Promise<void> {
           // Check if this content hash matches a previous write (revert pattern)
           // Skip the most recent hash (which would be the write being "reverted from")
           if (prevHashes.length >= 2 && prevHashes.slice(0, -1).includes(hash)) {
+            revertDetected = true;
             recordImplicitFeedback({
               type: 'revert_detected',
               file: filePath,
@@ -210,8 +247,7 @@ async function main(): Promise<void> {
   // 3. Drift score evaluation
   if (toolName === 'Write' || toolName === 'Edit') {
     if (!modState.drift) modState.drift = createDriftState(sessionId);
-    const isRevert = messages.some(m => m.includes('revert_detected'));
-    const driftResult = evaluateDrift(modState.drift, true, isRevert);
+    const driftResult = evaluateDrift(modState.drift, true, revertDetected);
     if (driftResult.message) {
       messages.push(`<compound-tool-warning>\n${driftResult.message}\n</compound-tool-warning>`);
       recordImplicitFeedback({
@@ -225,7 +261,22 @@ async function main(): Promise<void> {
     }
   }
 
-  // 4. Bash error detection
+  // 4. Agent output validation (Tier 2-F)
+  if (toolName === 'Agent') {
+    const agentResult = validateAgentOutput(toolResponse);
+    if (agentResult) {
+      messages.push(`<compound-agent-validation>\n[Forgen] ${agentResult.severity === 'error' ? '⛔' : '⚠'} ${agentResult.message}\n</compound-agent-validation>`);
+      recordImplicitFeedback({
+        type: `agent_${agentResult.signal}`,
+        severity: agentResult.severity,
+        outputLength: toolResponse.trim().length,
+        at: new Date().toISOString(),
+        sessionId,
+      });
+    }
+  }
+
+  // 5. Bash error detection
   if (toolName === 'Bash' && toolResponse) {
     const errorMatch = detectErrorPattern(toolResponse);
     if (errorMatch) {
@@ -234,10 +285,10 @@ async function main(): Promise<void> {
     }
   }
 
-  // 5. Compound negative signal (non-blocking)
+  // 6. Compound negative signal (non-blocking)
   try { checkCompoundNegative(toolName, toolResponse, sessionId); } catch (e) { log.debug('compound negative check 실패', e); }
 
-  // 6. Compound success hint (non-blocking)
+  // 7. Compound success hint (non-blocking)
   try {
     const successHint = getCompoundSuccessHint(toolName, toolResponse, sessionId);
     if (successHint) messages.push(successHint);

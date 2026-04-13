@@ -334,9 +334,9 @@ describe('Skill expansion', () => {
     });
   }
 
-  it('총 스킬 수가 19개이다 (기존 9 + 신규 10)', () => {
+  it('총 스킬 수가 21개이다 (기존 19 + specify, deep-interview)', () => {
     const commands = fs.readdirSync(path.join(PROJECT_ROOT, 'commands'))
       .filter(f => f.endsWith('.md'));
-    expect(commands.length).toBe(19);
+    expect(commands.length).toBe(21);
   });
 });

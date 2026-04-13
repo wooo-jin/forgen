@@ -79,8 +79,9 @@ export const KEYWORD_PATTERNS: Array<{
   { pattern: /\bccg\b/i, keyword: 'ccg', type: 'skill', skill: 'ccg' },
   { pattern: /\bralplan\b/i, keyword: 'ralplan', type: 'skill', skill: 'ralplan' },
   { pattern: /\bdeep[- ]?interview\b/i, keyword: 'deep-interview', type: 'skill', skill: 'deep-interview' },
+  { pattern: /\bspecify\b|(?:^|\s)(명세|요구사항\s*정리|스펙\s*정리)(?:\s|$)/im, keyword: 'specify', type: 'skill', skill: 'specify' },
   { pattern: /\bpipeline\b/i, keyword: 'pipeline', type: 'skill', skill: 'pipeline' },
-  { pattern: /\b(ecomode|에코\s*모드|토큰\s*절약)\b/i, keyword: 'ecomode', type: 'skill', skill: 'ecomode' },
+  { pattern: /\becomode\b|(?:^|\s)(에코\s*모드|토큰\s*절약)(?:\s|$)/im, keyword: 'ecomode', type: 'skill', skill: 'ecomode' },
 
   // 인젝션 모드
   { pattern: /\bultrathink\b/i, keyword: 'ultrathink', type: 'inject' },
@@ -91,10 +92,10 @@ export const KEYWORD_PATTERNS: Array<{
 
   // 실용 스킬 — 명시적 모드 호출만 매칭 (일상 단어 false positive 방지)
   { pattern: /\bgit[- ]?master\b/i, keyword: 'git-master', type: 'skill', skill: 'git-master' },
-  { pattern: /\b(benchmark|벤치마크)\s*(?:mode|모드|해|해줘|시작|실행|돌려)|성능\s*측정/i, keyword: 'benchmark', type: 'inject' },
-  { pattern: /\b(migrate|마이그레이션)\s*(?:mode|모드|해|해줘|시작|실행|진행)/i, keyword: 'migrate', type: 'skill', skill: 'migrate' },
-  { pattern: /\b(debug[- ]?detective|디버그\s*탐정|체계적\s*디버깅)\b/i, keyword: 'debug-detective', type: 'skill', skill: 'debug-detective' },
-  { pattern: /\b(refactor|리팩토링|리팩터)\s*(?:mode|모드|해|해줘|시작|실행|진행)/i, keyword: 'refactor', type: 'skill', skill: 'refactor' },
+  { pattern: /\b(benchmark)\s*(?:mode|모드|해|해줘|시작|실행|돌려)|(?:^|\s)(벤치마크)\s*(?:mode|모드|해|해줘|시작|실행|돌려)|(?:^|\s)성능\s*측정/im, keyword: 'benchmark', type: 'inject' },
+  { pattern: /\b(migrate)\s*(?:mode|모드|해|해줘|시작|실행|진행)|(?:^|\s)(마이그레이션)\s*(?:mode|모드|해|해줘|시작|실행|진행)/im, keyword: 'migrate', type: 'skill', skill: 'migrate' },
+  { pattern: /\b(debug[- ]?detective)\b|(?:^|\s)(디버그\s*탐정|체계적\s*디버깅)(?:\s|$)/im, keyword: 'debug-detective', type: 'skill', skill: 'debug-detective' },
+  { pattern: /\b(refactor)\s*(?:mode|모드|해|해줘|시작|실행|진행)|(?:^|\s)(리팩토링|리팩터)\s*(?:mode|모드|해|해줘|시작|실행|진행)/im, keyword: 'refactor', type: 'skill', skill: 'refactor' },
 ];
 
 // ── 인젝션 메시지 ──

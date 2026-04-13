@@ -30,7 +30,12 @@ describe('renderRules', () => {
 
   it('renders empty rules gracefully', () => {
     const output = renderRules([], makeState(), profile);
-    // Pack summary removed for AI-optimized output; trust policy still injected via Working Defaults
+    // include_pack_summary defaults to false (AI-optimized); evidence collection always present
+    expect(output).toContain('Evidence Collection');
+  });
+
+  it('includes pack summary when explicitly enabled', () => {
+    const output = renderRules([], makeState(), profile, { ...DEFAULT_CONTEXT, include_pack_summary: true });
     expect(output).toContain('Trust:');
     expect(output).toContain('Working Defaults');
   });
@@ -42,11 +47,18 @@ describe('renderRules', () => {
     expect(output).toContain('Never expose credentials');
   });
 
-  it('quality rules go to How To Validate', () => {
-    const rules = [makeRule({ category: 'quality', policy: 'Run tests before completing' })];
+  it('quality rules go to How To Validate with [category|strength] tag', () => {
+    const rules = [makeRule({ category: 'quality', strength: 'default', policy: 'Run tests before completing' })];
     const output = renderRules(rules, makeState(), profile);
     expect(output).toContain('## How To Validate');
-    expect(output).toContain('Run tests before completing');
+    expect(output).toContain('[quality|default] Run tests before completing');
+  });
+
+  it('hard rules omit category tag (Must Not section conveys meaning)', () => {
+    const rules = [makeRule({ strength: 'hard', category: 'safety', policy: 'No secrets', render_key: 'safety.sec' })];
+    const output = renderRules(rules, makeState(), profile);
+    expect(output).toContain('- No secrets');
+    expect(output).not.toContain('[safety|hard]');
   });
 
   it('autonomy rules go to When To Ask', () => {

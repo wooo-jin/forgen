@@ -32,9 +32,10 @@ describe('intent-classifier', () => {
       expect(classifyIntent('make a helper function')).toBe('implement');
     });
 
-    it('한글 "만들어"는 \\b 경계 제약으로 매칭되지 않는다 (알려진 한계)', () => {
-      // 한글은 ASCII word boundary (\b) 밖에 있어서 매칭 실패
-      expect(classifyIntent('로그인 기능 만들어줘')).not.toBe('implement');
+    it('한글 "만들어줘"도 implement로 매칭된다 (Korean boundary fix)', () => {
+      expect(classifyIntent('로그인 기능 만들어줘')).toBe('implement');
+      expect(classifyIntent('새 API 추가해줘')).toBe('implement');
+      expect(classifyIntent('결제 시스템 구현해')).toBe('implement');
     });
   });
 

@@ -70,12 +70,13 @@ describe('paths', () => {
     expect(GLOBAL_CONFIG).toContain('.forgen');
   });
 
-  it('ALL_MODES는 9개 모드를 포함', () => {
-    expect(ALL_MODES.length).toBe(9);
+  it('ALL_MODES는 10개 모드를 포함 (specify 추가)', () => {
+    expect(ALL_MODES.length).toBe(10);
     expect(ALL_MODES).toContain('ralph');
     expect(ALL_MODES).toContain('autopilot');
     expect(ALL_MODES).toContain('ultrawork');
     expect(ALL_MODES).toContain('ecomode');
+    expect(ALL_MODES).toContain('specify');
   });
 
   it('projectDir는 cwd/.compound/ 반환', () => {

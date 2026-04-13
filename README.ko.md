@@ -182,14 +182,63 @@ forgen
 
 ### Compound 지식
 
-지식은 세션을 거치며 축적되고, 검색 가능해집니다:
+지식은 세션을 거치며 신뢰도 기반 라이프사이클로 축적됩니다:
+
+```
+experiment (0.30) → candidate (0.55) → verified (0.75) → mature (0.90)
+```
+
+각 솔루션은 `experiment`로 시작합니다. 세션을 거치며 코드에 반영될수록 자동 승격됩니다. 부정적 evidence는 서킷 브레이커를 작동시켜 자동 은퇴시킵니다. 실제로 당신에게 맞는 패턴만 살아남습니다.
 
 | 유형 | 출처 | Claude 활용 방법 |
 |------|------|-----------------|
-| **솔루션** | 세션에서 추출 | MCP를 통한 `compound-search` |
-| **스킬** | 검증된 솔루션에서 승격 | 슬래시 커맨드로 자동 로드 |
+| **솔루션** | 세션에서 추출 | 프롬프트와 관련 있을 때 자동 주입 (TF-IDF + BM25 + bigram 앙상블) |
+| **스킬** | 21개 내장 + 검증된 솔루션에서 승격 | 키워드로 활성화 (`specify`, `deep-interview`, `tdd` 등) |
 | **행동 패턴** | 3회 이상 관찰 시 자동 감지 | `forge-behavioral.md`에 적용 |
-| **Evidence** | 교정 + 관찰 | facet 조정의 근거 |
+| **Evidence** | 교정 + 관찰 | facet 조정 및 규칙 생성의 근거 |
+
+### Solution 자동 주입
+
+입력하는 모든 프롬프트가 축적된 솔루션과 매칭됩니다. 관련 솔루션은 Claude의 컨텍스트에 자동 주입됩니다 — 직접 찾아볼 필요가 없습니다.
+
+```
+입력: "API의 에러 핸들링을 고쳐줘"
+                    ↓
+solution-injector 매칭: starter-error-handling-patterns (0.70)
+                    ↓
+Claude에게 전달: "매칭된 솔루션: error-handling-patterns [pattern|0.70]
+             특정 에러 타입으로 try/catch 사용. 원본 에러는 반드시 로깅..."
+                    ↓
+Claude가 축적된 패턴을 바탕으로 더 나은 에러 핸들링 코드를 작성합니다.
+```
+
+### 21개 내장 스킬
+
+프롬프트에 키워드를 입력하면 활성화됩니다:
+
+| 스킬 | 트리거 | 기능 |
+|------|--------|------|
+| `specify` | "specify", "명세" | 요구사항을 Resolved/Provisional/Unresolved로 구조화, 준비도 % 산출 |
+| `deep-interview` | "deep-interview" | 주제별 Ambiguity Score (0-10)를 사용한 심층 요구사항 인터뷰 |
+| `code-review` | "code review 해줘" | 심각도 등급이 포함된 20개 항목 체크리스트 리뷰 |
+| `tdd` | "tdd 해줘" | Red-Green-Refactor 테스트 주도 개발 |
+| `debug-detective` | "debug-detective" | 재현 → 격리 → 수정 → 검증 루프 |
+| `refactor` | "refactor 시작" | 테스트 우선 안전한 리팩토링 |
+| `git-master` | "git-master" | 원자적 커밋 + 클린 히스토리 관리 |
+| `security-review` | "security review" | OWASP Top 10 취약점 점검 |
+| `ecomode` | "ecomode", "에코 모드" | 토큰 절약 모드 |
+| `migrate` | "migrate 해줘", "마이그레이션 시작" | 5단계 안전 마이그레이션 워크플로우 |
+| ... | | 11개 추가 (api-design, architecture-decision, ci-cd, database, docker, documentation, frontend, incident-response, performance, testing-strategy, compound) |
+
+### 세션 관리
+
+| 기능 | 동작 |
+|------|------|
+| **세션 브리프** | 컨텍스트 압축 전 구조화된 브리프 저장 → 다음 세션에서 복원 |
+| **drift 감지** | EWMA 기반 편집 속도 추적 → 15회 편집 시 경고, 30회 위험, 50회 강제 정지 |
+| **에이전트 출력 검증** | Claude가 서브 에이전트를 실행할 때 출력 품질 자동 검증 |
+| **자동 압축** | 누적 12만 자 초과 시 Claude에게 컨텍스트 압축 지시 |
+| **pending compound** | 20회 이상 프롬프트 세션 후 다음 세션에서 compound 추출 자동 트리거 |
 
 ---
 
@@ -337,6 +386,12 @@ forgen me                       # 개인 대시보드 (inspect profile 단축키
 ```bash
 forgen compound                 # 축적된 지식 미리보기
 forgen compound --save          # 자동 분석된 패턴 저장
+forgen compound list            # 상태가 포함된 솔루션 전체 목록
+forgen compound inspect <이름>  # 솔루션 전체 내용 확인
+forgen compound --lifecycle     # 승격/강등 검사 실행
+forgen compound --verify <이름> # 수동으로 verified 승격
+forgen compound export          # 지식을 tar.gz로 내보내기
+forgen compound import <경로>   # 지식 아카이브 가져오기
 forgen skill promote <이름>     # 검증된 솔루션을 스킬로 승격
 forgen skill list               # 승격된 스킬 목록
 ```
@@ -345,10 +400,14 @@ forgen skill list               # 승격된 스킬 목록
 
 ```bash
 forgen init                     # 프로젝트 초기화
-forgen doctor                   # 시스템 진단
-forgen config hooks             # 훅 상태 확인
+forgen doctor                   # 시스템 진단 (10개 항목 + 하네스 성숙도)
+forgen dashboard                # 지식 현황 대시보드 (6개 섹션)
+forgen config hooks             # 훅 상태 + 컨텍스트 예산 확인
 forgen config hooks --regenerate # 훅 재생성
-forgen mcp                      # MCP 서버 관리
+forgen mcp list                 # 설치된 MCP 서버 목록
+forgen mcp add <이름>           # 템플릿에서 MCP 서버 추가
+forgen mcp templates            # 사용 가능한 템플릿 목록
+forgen notepad show             # 세션 노트패드 보기
 forgen uninstall                # forgen 깔끔하게 제거
 ```
 
@@ -356,12 +415,14 @@ forgen uninstall                # forgen 깔끔하게 제거
 
 | 도구 | 용도 |
 |------|------|
-| `compound-search` | 축적된 지식을 쿼리로 검색 |
-| `compound-read` | 솔루션 전문 읽기 |
-| `compound-list` | 필터가 있는 솔루션 목록 |
-| `compound-stats` | 통계 요약 |
+| `compound-search` | 축적된 지식을 쿼리로 검색 (TF-IDF + BM25 + bigram 앙상블) |
+| `compound-read` | 솔루션 전문 읽기 (Progressive Disclosure Tier 3) |
+| `compound-list` | 상태/유형/범위 필터가 있는 솔루션 목록 |
+| `compound-stats` | 상태, 유형, 범위별 통계 현황 |
 | `session-search` | 이전 세션 대화 검색 (SQLite FTS5, Node.js 22+) |
 | `correction-record` | 사용자 교정을 구조화된 evidence로 기록 |
+| `profile-read` | 현재 개인화 프로필 읽기 |
+| `rule-list` | 카테고리별 활성 개인화 규칙 목록 |
 
 ---
 
@@ -431,10 +492,12 @@ rule-renderer.ts                     Rule[]을 자연어로 변환:
 | **pre-tool-use** | 모든 도구 실행 전 | `rm -rf`, `curl\|sh`, `--force` push, 위험 패턴 차단 |
 | **db-guard** | SQL 연산 | `DROP TABLE`, `WHERE` 없는 `DELETE`, `TRUNCATE` 차단 |
 | **secret-filter** | 파일 쓰기, 출력 | API 키, 토큰, 자격 증명 노출 시 경고 |
-| **slop-detector** | 코드 생성 후 | TODO 잔재, `eslint-disable`, `as any`, `@ts-ignore` 감지 |
+| **slop-detector** | 코드 생성 후 | TODO 잔재, `eslint-disable`, `as any`, `@ts-ignore`, 빈 catch 감지 |
 | **prompt-injection-filter** | 모든 입력 | 패턴 + 휴리스틱 기반 프롬프트 인젝션 차단 |
-| **context-guard** | 세션 중 | 컨텍스트 윈도우 한계 접근 시 경고 |
+| **context-guard** | 세션 중 | 50 프롬프트/20만 자 시 경고, 12만 자 자동 압축, 세션 인계 |
 | **rate-limiter** | MCP 도구 호출 | 과도한 MCP 도구 호출 방지 |
+| **drift-detector** | 파일 편집 | EWMA 기반 drift 점수: 경고 → 위험 → 50회 편집 시 강제 정지 |
+| **agent-validator** | 에이전트 도구 출력 | 서브 에이전트 출력이 비어있거나 실패/잘린 경우 경고 |
 
 안전 규칙은 **hard constraint**입니다 -- 팩 선택이나 교정으로 재정의할 수 없습니다. 렌더링된 규칙의 "Must Not" 섹션은 프로필과 무관하게 항상 존재합니다.
 
@@ -460,7 +523,19 @@ rule-renderer.ts                     Rule[]을 자연어로 변환:
 
 ## 공존
 
-forgen는 설치 시 다른 Claude Code 플러그인(oh-my-claudecode, superpowers, claude-mem)을 감지하고 겹치는 훅을 비활성화합니다. 핵심 안전 훅과 compound 훅은 항상 활성 상태를 유지합니다.
+forgen는 설치 시 다른 Claude Code 플러그인(oh-my-claudecode, superpowers, claude-mem)을 감지하고 컨텍스트 주입을 50% 자동 축소합니다 (양보 원칙). 핵심 안전 훅과 compound 훅은 항상 활성 상태를 유지합니다. 다른 플러그인이 이미 제공하는 스킬은 충돌을 피하기 위해 건너뜁니다.
+
+자세한 내용은 [공존 가이드](docs/guides/with-omc.md)를 참고하세요.
+
+---
+
+## 문서
+
+| 문서 | 설명 |
+|------|------|
+| [훅 레퍼런스](docs/reference/hooks-reference.md) | 3개 계층의 19개 훅 — 이벤트, 타임아웃, 동작 |
+| [공존 가이드](docs/guides/with-omc.md) | oh-my-claudecode와 forgen 함께 사용하기 |
+| [CHANGELOG](CHANGELOG.md) | 버전 히스토리 및 릴리즈 노트 |
 
 ---
 

@@ -79,10 +79,10 @@ export function getRecoverySuggestion(error: string, toolName: string): string {
     return 'The old_string matched multiple locations. Include more surrounding context to make it unique, or use replace_all: true if all occurrences should change.';
   }
   if (/enoent|no such file|not found/.test(lower)) {
-    return 'File/path does not exist. Check the path.';
+    return 'File/path does not exist. Use Glob to search for similar file names, then retry with the correct path.';
   }
   if (/eacces|permission denied/.test(lower)) {
-    return 'Permission denied. Check file permissions.';
+    return 'Permission denied. Check file permissions with `ls -la` and fix with `chmod` if needed.';
   }
   if (/syntax error|syntaxerror/.test(lower)) {
     return 'Syntax error. Review the code again.';

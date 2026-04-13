@@ -5,6 +5,34 @@ All notable changes to forgen will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-04-13
+
+### Added
+- **specify skill**: Structured requirement specification with Resolved/Provisional/Unresolved 3-level evaluation and readiness percentage
+- **deep-interview skill**: Deep requirement interview with Ambiguity Score (0-10) quantification across 5 axes (What/Who/How/When/Why)
+- **Agent output validation** (Tier 2-F): PostToolUse hook validates sub-agent output for empty/failed/timeout/context overflow
+- **BM25 ensemble scoring** (2-C): 3-way ensemble (TF-IDF 0.5 + BM25 0.3 + bigram 0.2) for solution matching
+- **Intent-based context injection** (2-B): implement/debug/refactor/review intents inject domain-specific rules
+- **Harness maturity diagnosis**: `forgen doctor` shows 5-axis L0-L3 maturity score with Quick Wins
+- **Session brief handoff**: Structured brief saved before compact, restored on next session start
+- **Output overflow prevention**: Solution injection footer includes head_limit guidance
+
+### Fixed
+- **Korean `\b` boundary**: Fixed 7 regex patterns where `\b` failed with Korean text (intent-classifier, keyword-detector)
+- **Revert→drift connection**: `isRevert` was always false (checked messages array instead of boolean flag)
+- **ALL_MODES missing specify**: `cancelforgen` didn't clear specify state
+- **MCP list TypeError**: Crashed on url-format servers without `args` field
+- **Agent empty string**: Empty string (`""`) was falsy, skipping validation
+- **Solution content regex**: `\Z` is not valid in JavaScript (literal Z), changed to `$`
+- **`severity: 'info' as 'warning'`**: Removed forced type assertion
+
+### Changed
+- **Rule renderer AI optimization** (2-A): `[category|strength]` tag prefix format, `include_pack_summary` defaults to false (token reduction)
+- **Recovery messages** (1-A): ENOENT suggests Glob search, EACCES suggests chmod
+- **skill-injector lock**: Session cache protected with `withFileLockSync` (race condition fix)
+- **incrementFailureCounter lock**: Context signals protected with `withFileLockSync`
+- Docker E2E expanded to 68 checks (Phase 8: Hoyeon analysis verification)
+
 ## [5.1.0] - 2026-04-06
 
 ### Fixed
