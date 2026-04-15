@@ -41,15 +41,27 @@ function runHook(hookFile: string, input: object, timeoutMs = 10000): Promise<Ho
     const timer = setTimeout(() => { child.kill(); reject(new Error('timeout')); }, timeoutMs);
     child.on('close', () => {
       clearTimeout(timer);
-      // 마지막 유효 JSON 라인 파싱 (hook이 여러 줄 출력할 수 있음)
+      // Hook 응답은 반드시 `continue` 필드를 가짐. stdout에 로그·경고가 섞여
+      // 나와도 `continue` 키를 가진 마지막 유효 JSON을 응답으로 선택.
       const lines = stdout.split('\n').filter(Boolean);
       for (let i = lines.length - 1; i >= 0; i--) {
-        try { resolve(JSON.parse(lines[i]) as HookResponse); return; }
-        catch { continue; }
+        try {
+          const parsed = JSON.parse(lines[i]);
+          if (parsed && typeof parsed === 'object' && 'continue' in parsed) {
+            resolve(parsed as HookResponse);
+            return;
+          }
+        } catch { /* try previous line */ }
       }
-      // 단일 JSON으로도 시도 (개행 포함 가능)
-      try { resolve(JSON.parse(stdout) as HookResponse); }
-      catch { reject(new Error(`Invalid JSON: ${stdout.slice(0, 300)}`)); }
+      // Fallback: 개행 포함 단일 JSON 전체 파싱 시도
+      try {
+        const parsed = JSON.parse(stdout);
+        if (parsed && typeof parsed === 'object' && 'continue' in parsed) {
+          resolve(parsed as HookResponse);
+          return;
+        }
+      } catch { /* fall through to reject */ }
+      reject(new Error(`No hook response with 'continue' field in stdout: ${stdout.slice(0, 300)}`));
     });
     child.on('error', reject);
   });
