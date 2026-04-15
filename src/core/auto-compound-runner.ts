@@ -487,6 +487,20 @@ ${sanitizedSummary.slice(0, 4000)}
     process.stderr.write(`[forgen-auto-compound] rule promotion: ${e instanceof Error ? e.message : String(e)}\n`);
   }
 
+  // Step 5: meta-learning (HyperAgents-inspired self-tuning)
+  try {
+    const { runMetaLearning } = await import('../engine/meta-learning/runner.js');
+    const metaResult = runMetaLearning(sessionId, cwd);
+    if (metaResult.qualityScore) {
+      process.stderr.write(`[forgen-meta] session quality: ${metaResult.qualityScore.overallScore}/100\n`);
+    }
+    if (metaResult.scopePromotions && metaResult.scopePromotions.length > 0) {
+      process.stderr.write(`[forgen-meta] promoted ${metaResult.scopePromotions.length} solution(s) to universal scope\n`);
+    }
+  } catch (e) {
+    process.stderr.write(`[forgen-meta] ${e instanceof Error ? e.message : String(e)}\n`);
+  }
+
   // 완료 기록
   const statePath = path.join(FORGEN_HOME, 'state', 'last-auto-compound.json');
   fs.mkdirSync(path.dirname(statePath), { recursive: true });

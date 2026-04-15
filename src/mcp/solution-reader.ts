@@ -17,16 +17,20 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ME_SOLUTIONS, PACKS_DIR } from '../core/paths.js';
-import { getOrBuildIndex } from '../engine/solution-index.js';
-import type { SolutionDirConfig } from '../engine/solution-index.js';
-import { extractTags, expandCompoundTags, expandQueryBigrams } from '../engine/solution-format.js';
-import { parseSolutionV3 } from '../engine/solution-format.js';
-import type { SolutionStatus, SolutionType } from '../engine/solution-format.js';
-import { maskBlockedTokens } from '../engine/phrase-blocklist.js';
-import { mutateSolutionFile } from '../engine/solution-writer.js';
-import { calculateRelevance, shouldRejectByR4T3Rules } from '../engine/solution-matcher.js';
-import { defaultNormalizer } from '../engine/term-normalizer.js';
 import { logMatchDecision } from '../engine/match-eval-log.js';
+import { maskBlockedTokens } from '../engine/phrase-blocklist.js';
+import type { SolutionStatus, SolutionType } from '../engine/solution-format.js';
+import {
+  expandCompoundTags,
+  expandQueryBigrams,
+  extractTags,
+  parseSolutionV3,
+} from '../engine/solution-format.js';
+import type { SolutionDirConfig } from '../engine/solution-index.js';
+import { getOrBuildIndex } from '../engine/solution-index.js';
+import { calculateRelevance, shouldRejectByR4T3Rules } from '../engine/solution-matcher.js';
+import { mutateSolutionFile } from '../engine/solution-writer.js';
+import { defaultNormalizer } from '../engine/term-normalizer.js';
 import { filterSolutionContent } from '../hooks/prompt-injection-filter.js';
 
 // ── 타입 ──
@@ -42,7 +46,7 @@ export interface ListOptions {
   dirs?: SolutionDirConfig[];
   status?: SolutionStatus;
   type?: SolutionType;
-  scope?: 'me' | 'team' | 'project';
+  scope?: 'me' | 'team' | 'project' | 'universal';
   sort?: 'confidence' | 'updated' | 'name';
 }
 
@@ -51,7 +55,7 @@ export interface SolutionSummary {
   status: SolutionStatus;
   confidence: number;
   type: SolutionType;
-  scope: 'me' | 'team' | 'project';
+  scope: 'me' | 'team' | 'project' | 'universal';
   tags: string[];
 }
 
@@ -65,7 +69,7 @@ export interface SolutionDetail {
   status: SolutionStatus;
   confidence: number;
   type: SolutionType;
-  scope: 'me' | 'team' | 'project';
+  scope: 'me' | 'team' | 'project' | 'universal';
   tags: string[];
   identifiers: string[];
   context: string;
@@ -76,7 +80,7 @@ export interface SolutionStats {
   total: number;
   byStatus: Record<SolutionStatus, number>;
   byType: Record<SolutionType, number>;
-  byScope: Record<'me' | 'team' | 'project', number>;
+  byScope: Record<'me' | 'team' | 'project' | 'universal', number>;
 }
 
 // ── 디렉토리 해석 ──
@@ -86,9 +90,7 @@ export interface SolutionStats {
  * MCP 서버에서 cwd를 전달받으면 project 스코프도 포함.
  */
 export function defaultSolutionDirs(cwd?: string): SolutionDirConfig[] {
-  const dirs: SolutionDirConfig[] = [
-    { dir: ME_SOLUTIONS, scope: 'me' },
-  ];
+  const dirs: SolutionDirConfig[] = [{ dir: ME_SOLUTIONS, scope: 'me' }];
 
   // 팩 디렉토리 스캔 — 하위에 solutions/ 디렉토리가 있는 팩만 포함
   // PR2c-2 (M7 fix): readdirSync 결과를 정렬해 결정적 순서 보장.
@@ -170,12 +172,10 @@ export function searchSolutions(query: string, options?: SearchOptions): SearchR
     // R4-T2: pass `queryTags` (already masked above) so the union
     // denominator inside calculateRelevance uses the post-mask set, in
     // sync with the matching step.
-    const result = calculateRelevance(
-      queryTags,
-      entry.tags,
-      entry.confidence,
-      { normalizedPromptTags, solutionTagsExpanded: entryTagsExpanded },
-    ) as {
+    const result = calculateRelevance(queryTags, entry.tags, entry.confidence, {
+      normalizedPromptTags,
+      solutionTagsExpanded: entryTagsExpanded,
+    }) as {
       relevance: number;
       matchedTags: string[];
     };
@@ -184,7 +184,7 @@ export function searchSolutions(query: string, options?: SearchOptions): SearchR
     // Compute name match FIRST so R4-T3 cannot silently drop a candidate
     // with strong name-match evidence.
     const nameWords = entry.name.toLowerCase().split(/[-_]/);
-    const nameMatchCount = queryTags.filter(t => nameWords.includes(t)).length;
+    const nameMatchCount = queryTags.filter((t) => nameWords.includes(t)).length;
     const nameBoost = nameMatchCount * 0.1;
 
     // R4-T3: orchestration-layer specificity guards (mirror of the
@@ -194,9 +194,11 @@ export function searchSolutions(query: string, options?: SearchOptions): SearchR
     // bypass the R4-T3 gate — a nameMatchCount > 0 is strong evidence.
     let tagRelevance = result.relevance;
     let tagMatches = result.matchedTags;
-    if (nameMatchCount === 0
-      && tagMatches.length > 0
-      && shouldRejectByR4T3Rules(queryTags, tagMatches)) {
+    if (
+      nameMatchCount === 0 &&
+      tagMatches.length > 0 &&
+      shouldRejectByR4T3Rules(queryTags, tagMatches)
+    ) {
       tagRelevance = 0;
       tagMatches = [];
     }
@@ -211,7 +213,10 @@ export function searchSolutions(query: string, options?: SearchOptions): SearchR
       scope: entry.scope,
       tags: entry.tags,
       relevance: tagRelevance + nameBoost,
-      matchedTags: [...tagMatches, ...queryTags.filter(t => nameWords.includes(t) && !tagMatches.includes(t))],
+      matchedTags: [
+        ...tagMatches,
+        ...queryTags.filter((t) => nameWords.includes(t) && !tagMatches.includes(t)),
+      ],
     });
   }
 
@@ -228,12 +233,12 @@ export function searchSolutions(query: string, options?: SearchOptions): SearchR
       source: 'mcp',
       rawQuery: query,
       normalizedQuery: normalizedPromptTags,
-      candidates: top.map(r => ({
+      candidates: top.map((r) => ({
         name: r.name,
         relevance: r.relevance,
         matchedTerms: r.matchedTags,
       })),
-      rankedTopN: top.slice(0, 5).map(r => r.name),
+      rankedTopN: top.slice(0, 5).map((r) => r.name),
     });
   }
 
@@ -248,7 +253,7 @@ export function listSolutions(options?: ListOptions): SolutionSummary[] {
 
   const index = getOrBuildIndex(dirs);
 
-  let entries = index.entries.map(e => ({
+  let entries = index.entries.map((e) => ({
     name: e.name,
     status: e.status,
     confidence: e.confidence,
@@ -257,9 +262,9 @@ export function listSolutions(options?: ListOptions): SolutionSummary[] {
     tags: e.tags,
   }));
 
-  if (options?.status) entries = entries.filter(e => e.status === options.status);
-  if (options?.type) entries = entries.filter(e => e.type === options.type);
-  if (options?.scope) entries = entries.filter(e => e.scope === options.scope);
+  if (options?.status) entries = entries.filter((e) => e.status === options.status);
+  if (options?.type) entries = entries.filter((e) => e.type === options.type);
+  if (options?.scope) entries = entries.filter((e) => e.scope === options.scope);
 
   const sort = options?.sort ?? 'confidence';
   if (sort === 'confidence') {
@@ -280,12 +285,15 @@ export function listSolutions(options?: ListOptions): SolutionSummary[] {
  * 이것이 hook injection(1500자 캡)과의 핵심 차이입니다.
  * Prompt injection 필터만 적용합니다.
  */
-export function readSolution(name: string, options?: { dirs?: SolutionDirConfig[]; skipEvidence?: boolean }): SolutionDetail | null {
+export function readSolution(
+  name: string,
+  options?: { dirs?: SolutionDirConfig[]; skipEvidence?: boolean },
+): SolutionDetail | null {
   const dirs = options?.dirs ?? defaultSolutionDirs();
 
   const index = getOrBuildIndex(dirs);
 
-  const entry = index.entries.find(e => e.name === name);
+  const entry = index.entries.find((e) => e.name === name);
   if (!entry) return null;
 
   let fileContent: string;
@@ -313,7 +321,7 @@ export function readSolution(name: string, options?: { dirs?: SolutionDirConfig[
   // Pull(MCP) 경로: evidence에 기여 — sessions + reflected 카운트 증가
   // PR2b: solution-writer.mutateSolutionFile로 통합. lock + fresh re-read로 race 방지.
   if (!options?.skipEvidence) {
-    mutateSolutionFile(entry.filePath, sol => {
+    mutateSolutionFile(entry.filePath, (sol) => {
       sol.frontmatter.evidence.sessions += 1;
       sol.frontmatter.evidence.reflected += 1;
       return true;
@@ -345,8 +353,15 @@ export function getSolutionStats(options?: { dirs?: SolutionDirConfig[] }): Solu
     total: index.entries.length,
     // retired는 인덱스에서 제외되므로 항상 0 (solution-index.ts:73)
     byStatus: { experiment: 0, candidate: 0, verified: 0, mature: 0, retired: 0 },
-    byType: { pattern: 0, solution: 0, decision: 0, troubleshoot: 0, 'anti-pattern': 0, convention: 0 },
-    byScope: { me: 0, team: 0, project: 0 },
+    byType: {
+      pattern: 0,
+      solution: 0,
+      decision: 0,
+      troubleshoot: 0,
+      'anti-pattern': 0,
+      convention: 0,
+    },
+    byScope: { me: 0, team: 0, project: 0, universal: 0 },
   };
 
   for (const entry of index.entries) {

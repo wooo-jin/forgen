@@ -1,12 +1,13 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { ME_SOLUTIONS, PACKS_DIR } from '../core/paths.js';
+import { ME_SOLUTIONS, META_LEARNING_DIR, PACKS_DIR } from '../core/paths.js';
 import type { ScopeInfo } from '../core/types.js';
-import { extractTags, expandCompoundTags, expandQueryBigrams } from './solution-format.js';
-import { getOrBuildIndex } from './solution-index.js';
-import type { SolutionDirConfig } from './solution-index.js';
-import type { SolutionStatus, SolutionType } from './solution-format.js';
-import { defaultNormalizer } from './term-normalizer.js';
 import { maskBlockedTokens } from './phrase-blocklist.js';
+import type { SolutionStatus, SolutionType } from './solution-format.js';
+import { expandCompoundTags, expandQueryBigrams, extractTags } from './solution-format.js';
+import type { SolutionDirConfig } from './solution-index.js';
+import { getOrBuildIndex } from './solution-index.js';
+import { defaultNormalizer } from './term-normalizer.js';
 
 // ── Synonym expansion (delegates to term-normalizer) ──
 //
@@ -91,11 +92,7 @@ export function bigramSimilarity(a: string, b: string): number {
  * Uses tag overlap with term frequency normalization.
  * k1=1.2, b=0.75 (standard BM25 parameters).
  */
-export function bm25Score(
-  queryTags: string[],
-  docTags: string[],
-  avgDocLength: number,
-): number {
+export function bm25Score(queryTags: string[], docTags: string[], avgDocLength: number): number {
   const k1 = 1.2;
   const b = 0.75;
   const docLen = docTags.length;
@@ -104,7 +101,9 @@ export function bm25Score(
   let score = 0;
   for (const qt of queryTags) {
     // Term frequency in document
-    const tf = docTags.filter(dt => dt === qt || (dt.length > 3 && qt.length > 3 && (dt.includes(qt) || qt.includes(dt)))).length;
+    const tf = docTags.filter(
+      (dt) => dt === qt || (dt.length > 3 && qt.length > 3 && (dt.includes(qt) || qt.includes(dt))),
+    ).length;
     if (tf === 0) continue;
     // BM25 TF saturation
     const numerator = tf * (k1 + 1);
@@ -117,10 +116,37 @@ export function bm25Score(
 
 /** High-frequency tags that should be weighted lower */
 const COMMON_TAGS = new Set([
-  'typescript', 'ts', 'javascript', 'js', 'fix', 'update', 'add', 'change',
-  'file', 'code', 'function', 'import', 'export', 'error', 'type', 'string',
-  'number', 'object', 'array', 'return', 'const', 'class', 'module',
-  '코드', '파일', '함수', '수정', '추가', '변경', '에러', '타입',
+  'typescript',
+  'ts',
+  'javascript',
+  'js',
+  'fix',
+  'update',
+  'add',
+  'change',
+  'file',
+  'code',
+  'function',
+  'import',
+  'export',
+  'error',
+  'type',
+  'string',
+  'number',
+  'object',
+  'array',
+  'return',
+  'const',
+  'class',
+  'module',
+  '코드',
+  '파일',
+  '함수',
+  '수정',
+  '추가',
+  '변경',
+  '에러',
+  '타입',
 ]);
 
 /** Apply IDF-like weight: common tags get reduced weight */
@@ -131,7 +157,7 @@ export function tagWeight(tag: string): number {
 export interface SolutionMatch {
   name: string;
   path: string;
-  scope: 'me' | 'team' | 'project';
+  scope: 'me' | 'team' | 'project' | 'universal';
   relevance: number;
   summary: string;
   // v3 fields
@@ -152,7 +178,7 @@ interface LoadedSolution {
   tags: string[];
   identifiers: string[];
   filePath: string;
-  scope: 'me' | 'team' | 'project';
+  scope: 'me' | 'team' | 'project' | 'universal';
 }
 
 /**
@@ -178,6 +204,8 @@ export interface CalculateRelevanceOptions {
   solutionTagsExpanded?: string[];
   /** Average document (solution) tag count for BM25 normalization. Defaults to 6. */
   avgDocLength?: number;
+  /** Meta-learning: dynamic ensemble weights (sum must equal 1.0). Defaults to {tfidf:0.5, bm25:0.3, bigram:0.2}. */
+  ensembleWeights?: { tfidf: number; bm25: number; bigram: number };
 }
 
 export function calculateRelevance(
@@ -198,8 +226,11 @@ export function calculateRelevance(
     // Legacy mode: substring matching for backwards compatibility.
     // Not a hot path — only hit by the (old) solution-matcher.test.ts cases.
     const promptTags = extractTags(promptOrTags);
-    const intersection = keywordsOrTags.filter(kw =>
-      promptTags.some(pt => pt === kw || (pt.length > 3 && kw.length > 3 && (pt.startsWith(kw) || kw.startsWith(pt)))),
+    const intersection = keywordsOrTags.filter((kw) =>
+      promptTags.some(
+        (pt) =>
+          pt === kw || (pt.length > 3 && kw.length > 3 && (pt.startsWith(kw) || kw.startsWith(pt))),
+      ),
     );
     return Math.min(1, intersection.length / Math.max(promptTags.length * 0.5, 1));
   }
@@ -210,8 +241,8 @@ export function calculateRelevance(
   // the hot path pre-compute the expansion once per query and pass it via
   // `options.normalizedPromptTags`, so this function no longer repeats the
   // work per solution.
-  const expandedPromptTags = options?.normalizedPromptTags
-    ?? defaultNormalizer.normalizeTerms(promptOrTags);
+  const expandedPromptTags =
+    options?.normalizedPromptTags ?? defaultNormalizer.normalizeTerms(promptOrTags);
 
   // R4-T1: when the caller supplies a compound-expanded solution tag set,
   // intersection and partial matching run against the expanded set (so
@@ -220,17 +251,20 @@ export function calculateRelevance(
   // for normalization stability.
   const matchTags = options?.solutionTagsExpanded ?? keywordsOrTags;
 
-  const intersection = matchTags.filter(t => expandedPromptTags.includes(t));
+  const intersection = matchTags.filter((t) => expandedPromptTags.includes(t));
 
   // partial/substring matches for longer tags (>3 chars)
-  const partialMatches = matchTags.filter(t =>
-    t.length > 3 && !intersection.includes(t)
-    && expandedPromptTags.some(pt => pt.length > 3 && (pt.includes(t) || t.includes(pt))),
+  const partialMatches = matchTags.filter(
+    (t) =>
+      t.length > 3 &&
+      !intersection.includes(t) &&
+      expandedPromptTags.some((pt) => pt.length > 3 && (pt.includes(t) || t.includes(pt))),
   );
 
   // Apply TF-IDF weighting: common tags count less
-  const weightedMatched = intersection.reduce((sum, t) => sum + tagWeight(t), 0)
-    + partialMatches.reduce((sum, t) => sum + tagWeight(t) * 0.5, 0);
+  const weightedMatched =
+    intersection.reduce((sum, t) => sum + tagWeight(t), 0) +
+    partialMatches.reduce((sum, t) => sum + tagWeight(t) * 0.5, 0);
 
   // ── Bigram similarity boost for borderline cases ──
   //
@@ -270,9 +304,13 @@ export function calculateRelevance(
       const blendedScore = tfidfScore * 0.8 + bestBigramScore * 0.2;
       return {
         relevance: blendedScore * (confidence ?? 1),
-        matchedTags: [...intersection, ...partialMatches, ...bigramMatchedTags.filter(
-          t => !intersection.includes(t) && !partialMatches.includes(t),
-        )],
+        matchedTags: [
+          ...intersection,
+          ...partialMatches,
+          ...bigramMatchedTags.filter(
+            (t) => !intersection.includes(t) && !partialMatches.includes(t),
+          ),
+        ],
       };
     }
 
@@ -296,7 +334,8 @@ export function calculateRelevance(
     }
   }
 
-  const ensembleScore = tfidfScore * 0.5 + bm25 * 0.3 + bigramBoost * 0.2;
+  const w = options?.ensembleWeights ?? { tfidf: 0.5, bm25: 0.3, bigram: 0.2 };
+  const ensembleScore = tfidfScore * w.tfidf + bm25 * w.bm25 + bigramBoost * w.bigram;
   return {
     relevance: ensembleScore * (confidence ?? 1),
     matchedTags: [...intersection, ...partialMatches],
@@ -378,8 +417,9 @@ export function shouldRejectByR4T3Rules(
   // Rule B
   if (matchedTags.length === 1) {
     const tag = matchedTags[0];
-    const literalHit = promptTags.includes(tag)
-      || promptTags.some(pt => {
+    const literalHit =
+      promptTags.includes(tag) ||
+      promptTags.some((pt) => {
         if (pt.length <= 3 || tag.length <= 3) return false;
         if (pt.includes(tag) || tag.includes(pt)) return true;
         // Morphological stem: shared prefix of length ≥ 4
@@ -454,6 +494,7 @@ function rankCandidates<T extends RankableSolution>(
   promptTags: string[],
   promptLower: string,
   solutions: readonly T[],
+  ensembleWeights?: { tfidf: number; bm25: number; bigram: number },
 ): RankedCandidate<T>[] {
   // T2: normalize prompt tags ONCE per query (not once per solution).
   // Pre-T2 this expansion happened inside calculateRelevance and was
@@ -489,7 +530,7 @@ function rankCandidates<T extends RankableSolution>(
   const normalizedPromptTags = defaultNormalizer.normalizeTerms(promptTagsWithBigrams);
 
   return solutions
-    .map(sol => {
+    .map((sol) => {
       // R4-T1: solution-side compound-tag expansion. `api-key` becomes
       // {api-key, api, key} so a query token `api` (from "api keys") hits
       // it directly. Computed per solution because each sol.tags is
@@ -503,12 +544,11 @@ function rankCandidates<T extends RankableSolution>(
       // step (intersection/partialMatches) already uses the masked set
       // via `normalizedPromptTags` — the union must match for score
       // semantics to stay consistent.
-      const result = calculateRelevance(
-        maskedPromptTags,
-        sol.tags,
-        sol.confidence,
-        { normalizedPromptTags, solutionTagsExpanded: solTagsExpanded },
-      ) as { relevance: number; matchedTags: string[] };
+      const result = calculateRelevance(maskedPromptTags, sol.tags, sol.confidence, {
+        normalizedPromptTags,
+        solutionTagsExpanded: solTagsExpanded,
+        ensembleWeights,
+      }) as { relevance: number; matchedTags: string[] };
 
       // Compute identifier boost FIRST — independent of tag scoring so
       // R4-T3's tag-evidence precision rules below cannot silently drop
@@ -537,9 +577,11 @@ function rankCandidates<T extends RankableSolution>(
       // the `matchedTags.length + matchedIdentifiers.length >= 1` filter.
       let tagRelevance = result.relevance;
       let tagMatches = result.matchedTags;
-      if (matchedIdentifiers.length === 0
-        && tagMatches.length > 0
-        && shouldRejectByR4T3Rules(maskedPromptTags, tagMatches)) {
+      if (
+        matchedIdentifiers.length === 0 &&
+        tagMatches.length > 0 &&
+        shouldRejectByR4T3Rules(maskedPromptTags, tagMatches)
+      ) {
         tagRelevance = 0;
         tagMatches = [];
       }
@@ -551,7 +593,7 @@ function rankCandidates<T extends RankableSolution>(
         matchedIdentifiers,
       };
     })
-    .filter(c => c.matchedTags.length + c.matchedIdentifiers.length >= 1)
+    .filter((c) => c.matchedTags.length + c.matchedIdentifiers.length >= 1)
     .sort((a, b) => b.relevance - a.relevance)
     .slice(0, 5);
 }
@@ -904,7 +946,7 @@ export function evaluateQuery(
   solutions: readonly EvalSolution[],
 ): Array<{ name: string; relevance: number; matchedTags: string[] }> {
   const promptTags = extractTags(query);
-  return rankCandidates(promptTags, query.toLowerCase(), solutions).map(c => ({
+  return rankCandidates(promptTags, query.toLowerCase(), solutions).map((c) => ({
     name: c.solution.name,
     relevance: c.relevance,
     matchedTags: c.matchedTags,
@@ -931,15 +973,21 @@ export function evaluateSolutionMatcher(fixture: EvalFixture): EvalResult {
   // Weighted aggregation: counts, not means — so a large positive bucket
   // doesn't drown a small paraphrase bucket but also a single-query bucket
   // doesn't dominate.
-  const recallAt5 = combinedTotal > 0
-    ? (positiveM.recallAt5 * positiveM.total + paraphraseM.recallAt5 * paraphraseM.total) / combinedTotal
-    : 0;
-  const mrrAt5 = combinedTotal > 0
-    ? (positiveM.mrrAt5 * positiveM.total + paraphraseM.mrrAt5 * paraphraseM.total) / combinedTotal
-    : 0;
-  const noResultRate = combinedTotal > 0
-    ? (positiveM.noResultRate * positiveM.total + paraphraseM.noResultRate * paraphraseM.total) / combinedTotal
-    : 0;
+  const recallAt5 =
+    combinedTotal > 0
+      ? (positiveM.recallAt5 * positiveM.total + paraphraseM.recallAt5 * paraphraseM.total) /
+        combinedTotal
+      : 0;
+  const mrrAt5 =
+    combinedTotal > 0
+      ? (positiveM.mrrAt5 * positiveM.total + paraphraseM.mrrAt5 * paraphraseM.total) /
+        combinedTotal
+      : 0;
+  const noResultRate =
+    combinedTotal > 0
+      ? (positiveM.noResultRate * positiveM.total + paraphraseM.noResultRate * paraphraseM.total) /
+        combinedTotal
+      : 0;
 
   let negAnyResult = 0;
   for (const q of fixture.negative) {
@@ -966,11 +1014,54 @@ export function evaluateSolutionMatcher(fixture: EvalFixture): EvalResult {
   };
 }
 
+// ── Meta-learning: dynamic ensemble weights ──
+
+let _cachedWeights: { tfidf: number; bm25: number; bigram: number } | undefined | null;
+let _weightsCacheTime = 0;
+const WEIGHTS_CACHE_TTL = 60_000; // 1 minute cache
+
+/**
+ * Load tuned matcher weights from meta-learning state.
+ * Returns undefined (use defaults) if no tuned weights exist.
+ * Cached for 1 minute to avoid re-reading per matchSolutions call.
+ */
+function loadTunedMatcherWeights(): { tfidf: number; bm25: number; bigram: number } | undefined {
+  const now = Date.now();
+  if (_cachedWeights !== undefined && now - _weightsCacheTime < WEIGHTS_CACHE_TTL) {
+    return _cachedWeights ?? undefined;
+  }
+  try {
+    const weightsPath = path.join(META_LEARNING_DIR, 'matcher-weights.json');
+    if (!fs.existsSync(weightsPath)) {
+      _cachedWeights = null;
+      _weightsCacheTime = now;
+      return undefined;
+    }
+    const data = JSON.parse(fs.readFileSync(weightsPath, 'utf-8')) as {
+      tfidf?: number;
+      bm25?: number;
+      bigram?: number;
+    };
+    if (
+      typeof data.tfidf === 'number' &&
+      typeof data.bm25 === 'number' &&
+      typeof data.bigram === 'number'
+    ) {
+      _cachedWeights = { tfidf: data.tfidf, bm25: data.bm25, bigram: data.bigram };
+      _weightsCacheTime = now;
+      return _cachedWeights;
+    }
+  } catch {
+    /* fail-open: use defaults */
+  }
+  _cachedWeights = null;
+  _weightsCacheTime = now;
+  return undefined;
+}
+
 export function matchSolutions(prompt: string, scope: ScopeInfo, cwd: string): SolutionMatch[] {
   // Build solution dirs for index cache
-  const dirs: SolutionDirConfig[] = [
-    { dir: ME_SOLUTIONS, scope: 'me' },
-  ];
+  const dirs: SolutionDirConfig[] = [{ dir: ME_SOLUTIONS, scope: 'me' }];
   if (scope.team) {
     dirs.push({ dir: path.join(PACKS_DIR, scope.team.name, 'solutions'), scope: 'team' });
   }
@@ -978,19 +1069,22 @@ export function matchSolutions(prompt: string, scope: ScopeInfo, cwd: string): S
 
   // Use cached index (rebuilt only when dirs change)
   const index = getOrBuildIndex(dirs);
-  const allSolutions: LoadedSolution[] = index.entries.map(e => ({ ...e }));
+  const allSolutions: LoadedSolution[] = index.entries.map((e) => ({ ...e }));
 
   const promptTags = extractTags(prompt);
   const promptLower = prompt.toLowerCase();
+
+  // Meta-learning: load tuned weights if available
+  const tunedWeights = loadTunedMatcherWeights();
 
   // Delegate to shared ranking core. `rankCandidates` is generic so each
   // ranked candidate carries the original `LoadedSolution` reference — no
   // name-based re-lookup, so two scopes sharing a name (e.g. me/foo and
   // project/foo) can both appear in the result without a Map last-wins
   // scope-precedence bug.
-  const ranked = rankCandidates(promptTags, promptLower, allSolutions);
+  const ranked = rankCandidates(promptTags, promptLower, allSolutions, tunedWeights);
 
-  return ranked.map(c => ({
+  return ranked.map((c) => ({
     name: c.solution.name,
     path: c.solution.filePath,
     scope: c.solution.scope,

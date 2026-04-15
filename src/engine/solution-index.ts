@@ -11,7 +11,7 @@ const log = createLogger('solution-index');
 
 export interface SolutionDirConfig {
   dir: string;
-  scope: 'me' | 'team' | 'project';
+  scope: 'me' | 'team' | 'project' | 'universal';
 }
 
 export interface SolutionIndex {

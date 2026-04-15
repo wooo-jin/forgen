@@ -3,7 +3,13 @@ import yaml from 'js-yaml';
 // ── Types ──
 
 export type SolutionStatus = 'experiment' | 'candidate' | 'verified' | 'mature' | 'retired';
-export type SolutionType = 'pattern' | 'solution' | 'decision' | 'troubleshoot' | 'anti-pattern' | 'convention';
+export type SolutionType =
+  | 'pattern'
+  | 'solution'
+  | 'decision'
+  | 'troubleshoot'
+  | 'anti-pattern'
+  | 'convention';
 
 export interface SolutionEvidence {
   injected: number;
@@ -19,7 +25,7 @@ export interface SolutionFrontmatter {
   status: SolutionStatus;
   confidence: number;
   type: SolutionType;
-  scope: 'me' | 'team' | 'project';
+  scope: 'me' | 'team' | 'project' | 'universal';
   tags: string[];
   identifiers: string[];
   evidence: SolutionEvidence;
@@ -41,7 +47,7 @@ export interface SolutionIndexEntry {
   status: SolutionStatus;
   confidence: number;
   type: SolutionType;
-  scope: 'me' | 'team' | 'project';
+  scope: 'me' | 'team' | 'project' | 'universal';
   tags: string[];
   /**
    * Pre-expanded tag set, computed at index build time via the term normalizer.
@@ -66,11 +72,28 @@ export interface SolutionIndexEntry {
 }
 
 export const DEFAULT_EVIDENCE: SolutionEvidence = {
-  injected: 0, reflected: 0, negative: 0, sessions: 0, reExtracted: 0,
+  injected: 0,
+  reflected: 0,
+  negative: 0,
+  sessions: 0,
+  reExtracted: 0,
 };
 
-const VALID_STATUSES: SolutionStatus[] = ['experiment', 'candidate', 'verified', 'mature', 'retired'];
-const VALID_TYPES: SolutionType[] = ['pattern', 'solution', 'decision', 'troubleshoot', 'anti-pattern', 'convention'];
+const VALID_STATUSES: SolutionStatus[] = [
+  'experiment',
+  'candidate',
+  'verified',
+  'mature',
+  'retired',
+];
+const VALID_TYPES: SolutionType[] = [
+  'pattern',
+  'solution',
+  'decision',
+  'troubleshoot',
+  'anti-pattern',
+  'convention',
+];
 
 // ── Helpers ──
 
@@ -94,12 +117,15 @@ export function validateFrontmatter(fm: unknown): fm is SolutionFrontmatter {
 
   if (typeof o.name !== 'string') return false;
   if (typeof o.version !== 'number' || o.version <= 0) return false;
-  if (typeof o.status !== 'string' || !VALID_STATUSES.includes(o.status as SolutionStatus)) return false;
+  if (typeof o.status !== 'string' || !VALID_STATUSES.includes(o.status as SolutionStatus))
+    return false;
   if (typeof o.confidence !== 'number' || o.confidence < 0 || o.confidence > 1) return false;
   if (typeof o.type !== 'string' || !VALID_TYPES.includes(o.type as SolutionType)) return false;
-  if (o.scope !== 'me' && o.scope !== 'team' && o.scope !== 'project') return false;
+  if (o.scope !== 'me' && o.scope !== 'team' && o.scope !== 'project' && o.scope !== 'universal')
+    return false;
   if (!Array.isArray(o.tags) || !o.tags.every((t: unknown) => typeof t === 'string')) return false;
-  if (!Array.isArray(o.identifiers) || !o.identifiers.every((t: unknown) => typeof t === 'string')) return false;
+  if (!Array.isArray(o.identifiers) || !o.identifiers.every((t: unknown) => typeof t === 'string'))
+    return false;
   if (typeof o.created !== 'string') return false;
   if (typeof o.updated !== 'string') return false;
   if (o.supersedes !== null && typeof o.supersedes !== 'string') return false;
@@ -186,7 +212,11 @@ export function parseSolutionV3(content: string): SolutionV3 | null {
 
 /** Serialize a SolutionV3 to a markdown string with YAML frontmatter */
 export function serializeSolutionV3(solution: SolutionV3): string {
-  const yamlStr = yaml.dump(solution.frontmatter, { lineWidth: -1, quotingType: '"', schema: yaml.JSON_SCHEMA });
+  const yamlStr = yaml.dump(solution.frontmatter, {
+    lineWidth: -1,
+    quotingType: '"',
+    schema: yaml.JSON_SCHEMA,
+  });
   return `---\n${yamlStr}---\n\n## Context\n${solution.context}\n\n## Content\n${solution.content}\n`;
 }
 
@@ -215,35 +245,208 @@ export function isV1Format(content: string): boolean {
 /** 한국어 불용어 — 태그로 의미 없는 일반 단어 */
 const KO_STOPWORDS = new Set([
   // 일반 불용어
-  '적용', '패턴', '모든', '같은', '발견', '다른', '사용', '경우', '위해',
-  '통해', '대한', '이후', '때문', '하는', '있는', '없는', '되는', '관련',
-  '해야', '하고', '있다', '없다', '한다', '이런', '그런', '저런', '매우',
-  '항상', '모두', '각각', '대해', '여러', '시작', '그것', '이것', '저것',
-  '아주', '정말', '너무', '많이', '자주', '가장', '먼저', '이미', '아직',
-  '그냥', '바로', '다시', '함께', '위한', '따라', '부분', '전체', '방법',
-  '내용', '결과', '문제', '시점', '설정', '작업', '확인', '수행', '처리',
-  '기본', '추가', '변경', '제거', '포함', '생성', '실행', '완료', '필요',
+  '적용',
+  '패턴',
+  '모든',
+  '같은',
+  '발견',
+  '다른',
+  '사용',
+  '경우',
+  '위해',
+  '통해',
+  '대한',
+  '이후',
+  '때문',
+  '하는',
+  '있는',
+  '없는',
+  '되는',
+  '관련',
+  '해야',
+  '하고',
+  '있다',
+  '없다',
+  '한다',
+  '이런',
+  '그런',
+  '저런',
+  '매우',
+  '항상',
+  '모두',
+  '각각',
+  '대해',
+  '여러',
+  '시작',
+  '그것',
+  '이것',
+  '저것',
+  '아주',
+  '정말',
+  '너무',
+  '많이',
+  '자주',
+  '가장',
+  '먼저',
+  '이미',
+  '아직',
+  '그냥',
+  '바로',
+  '다시',
+  '함께',
+  '위한',
+  '따라',
+  '부분',
+  '전체',
+  '방법',
+  '내용',
+  '결과',
+  '문제',
+  '시점',
+  '설정',
+  '작업',
+  '확인',
+  '수행',
+  '처리',
+  '기본',
+  '추가',
+  '변경',
+  '제거',
+  '포함',
+  '생성',
+  '실행',
+  '완료',
+  '필요',
   // 조사/어미/접속사 — Jaccard 분모 희석 방지
-  '에서', '으로', '에게', '에는', '에도', '까지', '부터', '보다', '처럼',
-  '만큼', '대로', '밖에', '뿐만', '이나', '이고', '이면', '이라', '인데',
-  '했는데', '됐는데', '있으면', '없으면', '하면', '되면', '하지', '되지',
-  '하며', '되며', '에서의', '으로의', '라는', '라고', '이라고', '때문에',
-  '아니라', '하지만', '그러나', '그래서', '따라서', '그리고', '그러면',
-  '만약', '비록', '하여', '않고', '않은', '않는', '해서', '해도', '해야',
+  '에서',
+  '으로',
+  '에게',
+  '에는',
+  '에도',
+  '까지',
+  '부터',
+  '보다',
+  '처럼',
+  '만큼',
+  '대로',
+  '밖에',
+  '뿐만',
+  '이나',
+  '이고',
+  '이면',
+  '이라',
+  '인데',
+  '했는데',
+  '됐는데',
+  '있으면',
+  '없으면',
+  '하면',
+  '되면',
+  '하지',
+  '되지',
+  '하며',
+  '되며',
+  '에서의',
+  '으로의',
+  '라는',
+  '라고',
+  '이라고',
+  '때문에',
+  '아니라',
+  '하지만',
+  '그러나',
+  '그래서',
+  '따라서',
+  '그리고',
+  '그러면',
+  '만약',
+  '비록',
+  '하여',
+  '않고',
+  '않은',
+  '않는',
+  '해서',
+  '해도',
+  '해야',
   // 일반 동사/형용사 어간 — 의미 없는 고빈도 단어
-  '가능', '상태', '이유', '방지', '의존', '의존성', '즉시', '원칙', '근거',
-  '수정', '제안', '기능', '구현', '구조', '단계', '목적', '상황', '조건',
-  '규칙', '동작', '활성', '비활성', '원래', '현재', '이전', '다음', '최종',
+  '가능',
+  '상태',
+  '이유',
+  '방지',
+  '의존',
+  '의존성',
+  '즉시',
+  '원칙',
+  '근거',
+  '수정',
+  '제안',
+  '기능',
+  '구현',
+  '구조',
+  '단계',
+  '목적',
+  '상황',
+  '조건',
+  '규칙',
+  '동작',
+  '활성',
+  '비활성',
+  '원래',
+  '현재',
+  '이전',
+  '다음',
+  '최종',
 ]);
 
 /** 영어 불용어 */
 const EN_STOPWORDS = new Set([
-  'the', 'and', 'for', 'that', 'this', 'with', 'from', 'are', 'was',
-  'were', 'been', 'have', 'has', 'had', 'not', 'but', 'all', 'can',
-  'will', 'use', 'used', 'using', 'when', 'each', 'which', 'their',
-  'also', 'into', 'more', 'some', 'than', 'other', 'should', 'would',
-  'could', 'about', 'after', 'before', 'between', 'does', 'only',
-  'across', 'just', 'detected', 'based', 'sessions', 'prompts',
+  'the',
+  'and',
+  'for',
+  'that',
+  'this',
+  'with',
+  'from',
+  'are',
+  'was',
+  'were',
+  'been',
+  'have',
+  'has',
+  'had',
+  'not',
+  'but',
+  'all',
+  'can',
+  'will',
+  'use',
+  'used',
+  'using',
+  'when',
+  'each',
+  'which',
+  'their',
+  'also',
+  'into',
+  'more',
+  'some',
+  'than',
+  'other',
+  'should',
+  'would',
+  'could',
+  'about',
+  'after',
+  'before',
+  'between',
+  'does',
+  'only',
+  'across',
+  'just',
+  'detected',
+  'based',
+  'sessions',
+  'prompts',
 ]);
 
 /** 한국어 일반 조사/어미 — strip 대상 (긴 것부터 매칭)
@@ -257,9 +460,32 @@ const EN_STOPWORDS = new Set([
  * term-matcher의 `KO_VERBAL_SUFFIXES`에 따로 둔다.
  */
 export const KO_SUFFIXES = [
-  '했습니다', '있습니다', '합니다', '입니다', '됩니다',
-  '에서', '까지', '으로', '하는', '하고', '했다', '된다', '한다',
-  '을', '를', '이', '가', '은', '는', '의', '에', '와', '과', '도', '만', '로',
+  '했습니다',
+  '있습니다',
+  '합니다',
+  '입니다',
+  '됩니다',
+  '에서',
+  '까지',
+  '으로',
+  '하는',
+  '하고',
+  '했다',
+  '된다',
+  '한다',
+  '을',
+  '를',
+  '이',
+  '가',
+  '은',
+  '는',
+  '의',
+  '에',
+  '와',
+  '과',
+  '도',
+  '만',
+  '로',
 ];
 
 export function stripKoSuffix(word: string): string {
@@ -291,9 +517,7 @@ const MAX_TAGS = 8;
  * a fresh `ROUND3_BASELINE` measurement on every downstream PR.
  */
 export function extractTags(text: string): string[] {
-  const cleaned = text
-    .toLowerCase()
-    .replace(/[^가-힣a-z0-9\s]/g, ' ');
+  const cleaned = text.toLowerCase().replace(/[^가-힣a-z0-9\s]/g, ' ');
 
   const words = cleaned.split(/\s+/).filter(Boolean);
   const freq = new Map<string, number>();

@@ -5,6 +5,7 @@ const HOME = os.homedir();
 
 /** ~/.claude/ — Claude Code 설정 디렉토리 */
 export const CLAUDE_DIR = path.join(HOME, '.claude');
+export const CODEX_DIR = path.join(HOME, '.codex');
 
 /** ~/.claude/settings.json — Claude Code 설정 파일 */
 export const SETTINGS_PATH = path.join(CLAUDE_DIR, 'settings.json');
@@ -67,6 +68,12 @@ export const SESSIONS_DIR = path.join(FORGEN_HOME, 'sessions');
 
 /** ~/.forgen/config.json — 글로벌 설정 */
 export const GLOBAL_CONFIG = path.join(FORGEN_HOME, 'config.json');
+
+/** ~/.forgen/state/session-quality/ — 세션 품질 점수 */
+export const SESSION_QUALITY_DIR = path.join(STATE_DIR, 'session-quality');
+
+/** ~/.forgen/state/meta-learning/ — 메타학습 상태 파일 */
+export const META_LEARNING_DIR = path.join(STATE_DIR, 'meta-learning');
 
 /** ~/.forgen/lab/ — Lab 적응형 최적화 엔진 데이터 */
 export const LAB_DIR = path.join(FORGEN_HOME, 'lab');
