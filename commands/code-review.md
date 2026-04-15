@@ -1,233 +1,218 @@
 ---
 name: code-review
-description: This skill should be used when the user asks to "code review,코드 리뷰,리뷰해줘,review this". Systematic code review with severity-rated feedback
+description: This skill should be used when the user asks to "code review,코드 리뷰,리뷰해줘,review this". 신뢰도 보정 기반 체계적 코드 리뷰 — compound 이력 연동, auto-fix, 20개 체크리스트.
+argument-hint: "[file, PR number, or git range]"
+model: opus
+allowed-tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+  - Edit
+  - Write
+  - Agent
 triggers:
   - "code review"
   - "코드 리뷰"
   - "리뷰해줘"
   - "review this"
+  - "리뷰"
+  - "review"
 ---
 
 <Purpose>
-체계적인 코드 리뷰를 수행하여 품질, 보안, 유지보수성을 검증합니다.
-심각도별로 분류된 피드백을 제공합니다.
+변경된 코드의 품질, 보안, 유지보수성을 체계적으로 검증합니다.
+모든 발견에 신뢰도 점수(1-10)를 부여하여 false positive를 최소화합니다.
+auto-fix 가능한 항목은 직접 수정하고, 판단이 필요한 항목만 사용자에게 보고합니다.
 </Purpose>
 
+<Compound_Integration>
+## Compound-In: 이전 리뷰 이력 로드
+
+```
+compound-search("{모듈명} {파일 경로 키워드} review 리뷰 이슈")
+```
+
+검색 결과가 있으면 보고서 상단에 표시합니다:
+
+```
+이전에 이 모듈에서 발견된 이슈:
+- [{제목}] (심각도: {level}, 날짜: {date})
+  해결 여부: {해결됨 / 미해결 / 재발}
+```
+
+재발 패턴: 같은 이슈 2회 이상 -> 심각도 자동 상향 (MEDIUM -> HIGH)
+
+## Compound-Out: 발견사항 기록
+
+- CRITICAL/HIGH -> compound troubleshoot 기록 제안
+- 새 anti-pattern -> compound anti-pattern 기록 제안
+</Compound_Integration>
+
+<Confidence_Calibration>
+## 신뢰도 보정 (모든 발견에 적용)
+
+```
+9-10: 코드를 읽고 검증함. 구체적 버그/취약점 시연 가능.
+7-8:  높은 확신 패턴 매치. 거의 확실히 실제 이슈.
+5-6:  중간. false positive 가능. 주의하여 플래그.
+3-4:  낮음. 부록에만 포함.
+1-2:  추측. P0 심각도일 때만 보고.
+```
+
+보고 임계값:
+- 본문: 5 이상
+- 부록: 3-4
+- 1-2: P0 아니면 생략
+</Confidence_Calibration>
+
 <Steps>
-1. **스코프 파악**: 변경된 파일과 영향 범위를 식별합니다
-   - git diff 또는 지정된 파일 확인
-   - 변경의 목적과 컨텍스트 이해
+## Phase 1: 스코프 파악
 
-2. **정확성 검증**: 로직이 의도대로 동작하는지 확인합니다
-   - 엣지 케이스 처리 여부
-   - 에러 핸들링 적절성
-   - 동시성/경쟁 조건
-
-3. **보안 검토**: OWASP Top 10 기준으로 취약점을 점검합니다
-   - 입력 검증/살균
-   - 인증/인가 로직
-   - 민감 정보 노출
-
-4. **유지보수성**: 코드 품질과 가독성을 평가합니다
-   - 네이밍 컨벤션
-   - SOLID 원칙 준수
-   - 적절한 추상화 수준
-
-5. **피드백 작성**: 심각도별로 분류하여 리포트합니다
-</Steps>
-
-## 에이전트 위임
-
-`code-reviewer` 에이전트(Opus 모델)에 위임하여 심층 코드 분석을 수행합니다:
-
-```
-Agent(
-  subagent_type="code-reviewer",
-  model="opus",
-  prompt="CODE REVIEW TASK
-
-코드 변경 사항의 품질, 보안, 유지보수성을 리뷰하세요.
-
-Scope: [git diff 또는 특정 파일]
-
-Review Checklist:
-- Security 취약점 (OWASP Top 10)
-- Code Quality (복잡도, 중복)
-- Performance 이슈 (N+1, 비효율 알고리즘)
-- Best Practices (네이밍, 문서화, 에러 핸들링)
-- Maintainability (결합도, 테스트 가능성)
-
-Output: 코드 리뷰 리포트:
-- 리뷰한 파일 수
-- 심각도별 이슈 (CRITICAL, HIGH, MEDIUM, LOW)
-- 구체적인 파일:라인 위치
-- 수정 권고
-- 승인 권고 (APPROVE / REQUEST CHANGES / COMMENT)"
-)
+```bash
+# 인수가 파일 경로 -> cat {path}
+# 인수가 PR 번호 -> gh pr diff {number}
+# 인수가 git range -> git diff {range}
+# 인수 없음 -> git diff HEAD (또는 git diff --staged)
 ```
 
-## 리뷰 체크리스트 (20개 항목)
+## Phase 2: Compound-In (이전 이력 확인)
+
+```
+compound-search("{모듈명 또는 핵심 키워드}")
+```
+
+## Phase 3: 체계적 검토 (20개 체크리스트)
 
 ### Security (6개)
-- [ ] 하드코딩된 시크릿 없음 (API 키, 비밀번호, 토큰)
-- [ ] 모든 사용자 입력이 살균됨
-- [ ] SQL/NoSQL 인젝션 방지
-- [ ] XSS 방지 (출력 이스케이핑)
-- [ ] CSRF 보호 (상태 변경 작업)
-- [ ] 인증/인가가 적절히 적용됨
+- [ ] 하드코딩된 시크릿 없음
+- [ ] 입력 살균 (SQL/NoSQL injection 방지)
+- [ ] XSS 방지
+- [ ] CSRF 보호
+- [ ] 인증/인가 적용
+- [ ] 민감 정보 로그 노출 없음
+
+### Critical Category (5개)
+- [ ] SQL/데이터 안전성
+- [ ] 경쟁 조건
+- [ ] LLM 신뢰 경계 (LLM 출력 살균 확인)
+- [ ] 시크릿 노출 (코드 + 로그 + 에러 메시지)
+- [ ] Enum 완전성 (새 값 -> 모든 switch/match 업데이트)
 
 ### Code Quality (5개)
-- [ ] 함수가 50줄 미만 (가이드라인)
+- [ ] 함수 50줄 미만
 - [ ] 순환 복잡도 10 미만
-- [ ] 깊은 중첩 없음 (4단계 초과 시 early return 적용)
-- [ ] 중복 로직 없음 (DRY 원칙)
-- [ ] 명확하고 서술적인 네이밍
+- [ ] 깊은 중첩 없음 (4단계 -> early return)
+- [ ] DRY 원칙
+- [ ] 서술적 네이밍
 
 ### Performance (4개)
-- [ ] N+1 쿼리 패턴 없음
-- [ ] 적절한 캐싱 적용
-- [ ] 효율적인 알고리즘 (O(n^2) 대신 O(n) 가능한 경우)
-- [ ] 불필요한 리렌더링 없음 (React/Vue)
+- [ ] N+1 없음
+- [ ] 적절한 캐싱
+- [ ] 효율적 알고리즘
+- [ ] 불필요한 리렌더링 없음
 
-### Best Practices (5개)
-- [ ] 에러 핸들링이 적절히 구현됨
-- [ ] 적절한 레벨의 로깅
-- [ ] 공개 API에 대한 문서화
-- [ ] 핵심 경로에 대한 테스트 존재
-- [ ] 주석 처리된 코드 없음
+## Phase 4: Auto-Fix 적용
 
-## 승인 기준
+**AUTO-FIX** (묻지 않고 수정):
+- 데드 코드, 미사용 import, stale 주석, 빈 catch 블록
 
-| 판정 | 조건 | 설명 |
-|------|------|------|
-| **APPROVE** | CRITICAL/HIGH 이슈 없음 | 경미한 개선 사항만 있음, 머지 가능 |
-| **REQUEST CHANGES** | CRITICAL 또는 HIGH 이슈 존재 | 반드시 수정 후 재리뷰 필요 |
-| **COMMENT** | LOW/MEDIUM 이슈만 존재 | 차단 사항 없음, 선택적 개선 권장 |
+**ASK** (사용자 판단):
+- 로직 변경, 아키텍처 리팩토링, 동작 변경
 
-## External Consultation (Optional)
+## Phase 5: 보고서 작성
 
-code-reviewer 에이전트는 교차 검증을 위해 Claude Task 에이전트에 자문할 수 있습니다.
+신뢰도 점수 + 심각도별 분류.
+</Steps>
 
-### Protocol
-1. **자체 리뷰를 먼저 완료** — 독립적으로 분석 수행
-2. **검증을 위한 자문** — Claude Task 에이전트를 통해 발견 사항 교차 확인
-3. **비판적 평가** — 외부 발견 사항을 맹목적으로 수용하지 않음
-4. **우아한 폴백** — 위임이 불가능할 경우 절대 차단하지 않음
+<Finding_Format>
+```
+[P{N}] (confidence: {N}/10) `{file}:{line}`
+  Issue: {구체적 문제}
+  Impact: {영향}
+  Fix: {수정 방안}
+```
+</Finding_Format>
 
-### 자문이 필요한 경우
-- 보안에 민감한 코드 변경
-- 복잡한 아키텍처 패턴
-- 익숙하지 않은 코드베이스나 언어
-- 고위험 프로덕션 코드
-
-### 자문을 생략하는 경우
-- 단순 리팩토링
-- 잘 알려진 패턴
-- 시간이 촉박한 리뷰
-- 작고 격리된 변경
-
-## 심각도 정의
-
-| 심각도 | 설명 |
-|--------|------|
-| **CRITICAL** | 보안 취약점 (머지 전 반드시 수정) |
-| **HIGH** | 버그 또는 주요 코드 스멜 (머지 전 수정 권장) |
-| **MEDIUM** | 경미한 이슈 (가능할 때 수정) |
-| **LOW** | 스타일/제안 (수정 고려) |
+<Failure_Modes>
+**스타일만 리뷰하고 로직 생략**: 네이밍/들여쓰기만 지적하고 비즈니스 로직, 엣지 케이스, 동시성은 검토하지 않는다.
+**파일:라인 없는 피드백**: 모든 이슈에 `파일명:라인번호` 필수.
+**숨겨진 BLOCKER + APPROVE**: CRITICAL/HIGH 발견 시 APPROVE 불가.
+**신뢰도 없는 발견**: 모든 발견에 1-10 신뢰도 필수.
+**Auto-fix에서 로직 변경**: 데드 코드/import/주석만 자동 수정. 비즈니스 로직 자동 변경 금지.
+**LLM 출력 무조건 신뢰**: LLM 출력 처리 코드는 신뢰 경계 검사 필수.
+</Failure_Modes>
 
 <Output>
 ```
 CODE REVIEW REPORT / 코드 리뷰 리포트
 ======================================
+Scope: {리뷰 대상}
+Files: {N}개 | Lines: +{N} / -{N}
 
-Files Reviewed: N
-Total Issues: N
+[COMPOUND HISTORY]
+- {이전 이슈} ({날짜}) -- {상태}
 
-CRITICAL (N)
-------------
-(없음 / 이슈 상세)
+CRITICAL ({N})
+──────────────
+[P0] (confidence: {N}/10) `{file}:{line}`
+  Issue: ...
+  Impact: ...
+  Fix: ...
 
-HIGH (N)
---------
-1. src/api/auth.ts:42
-   Issue: 사용자 입력이 SQL 쿼리 전에 살균되지 않음
-   Risk: SQL 인젝션 취약점
-   Fix: 파라미터화 쿼리 또는 ORM 사용
-
-2. src/components/UserProfile.tsx:89
-   Issue: 비밀번호가 로그에 평문으로 출력됨
-   Risk: 크리덴셜 노출
-   Fix: 로그 구문에서 비밀번호 제거
-
-3. src/utils/validation.ts:15
-   Issue: 이메일 정규식이 잘못된 형식을 허용
-   Risk: 잘못된 이메일 수용
-   Fix: 검증된 이메일 유효성 검사 라이브러리 사용
-
-MEDIUM (N)
-----------
+HIGH ({N})
+──────────
 ...
 
-LOW (N)
--------
+MEDIUM ({N})
+────────────
 ...
 
-RECOMMENDATION: [APPROVE / REQUEST CHANGES / COMMENT]
+LOW ({N})
+─────────
+...
 
-[수정이 필요한 경우 요약 코멘트]
+AUTO-FIXED ({N})
+────────────────
+- {수정 내용} ({file}:{line})
+
+APPENDIX (confidence 3-4)
+─────────────────────────
+- {낮은 신뢰도 항목}
+
+VERDICT: {APPROVE / REQUEST CHANGES / COMMENT}
+{판정 근거}
 ```
+
+| 판정 | 조건 |
+|------|------|
+| APPROVE | CRITICAL/HIGH 0개 |
+| REQUEST CHANGES | CRITICAL 1+ 또는 HIGH 2+ |
+| COMMENT | HIGH 1개 또는 MEDIUM만 |
 </Output>
 
 <Policy>
-- 변경된 코드만 리뷰합니다 (기존 코드의 기술 부채는 별도 이슈로)
-- 구체적인 코드 라인을 참조하여 피드백합니다
-- 문제 지적 시 해결 방안도 함께 제시합니다
-- 잘된 부분도 언급하여 균형 잡힌 피드백을 제공합니다
-- 20개 체크 항목을 빠짐없이 검토합니다
-- APPROVE/REQUEST CHANGES/COMMENT 3단계 판정을 반드시 포함합니다
+- 변경된 코드만 리뷰 (기존 기술 부채는 별도 이슈).
+- 모든 이슈에 `파일:라인` + 신뢰도 필수.
+- 문제 + 수정 방안을 함께 제시.
+- 20개 체크 항목 빠짐없이 검토.
+- Auto-fix는 안전한 항목에만.
+- CRITICAL/HIGH 발견 시 APPROVE 불가.
 </Policy>
-
-## 다른 스킬과의 연동
-
-**Pipeline 연동:**
-```
-/forgen:pipeline review "사용자 인증 구현"
-```
-구현 워크플로우의 일부로 코드 리뷰 포함
-
-**Ralph 연동:**
-```
-/forgen:ralph code-review then fix all issues
-```
-코드 리뷰 후 피드백 수정, 승인될 때까지 반복
-
-**팀 기반 병렬 리뷰:**
-```
-/forgen:team 4:code-reviewer "src/ 전체 파일 리뷰"
-```
-여러 파일에 대해 병렬 코드 리뷰 수행
-
-## Best Practices
-
-- **조기 리뷰** — 이슈가 누적되기 전에 잡기
-- **자주 리뷰** — 크고 드문 리뷰보다 작고 빈번한 리뷰
-- **CRITICAL/HIGH 우선** — 보안과 버그부터 즉시 수정
-- **컨텍스트 고려** — 일부 "이슈"는 의도적 트레이드오프일 수 있음
-- **리뷰에서 학습** — 피드백을 활용하여 코딩 관행 개선
 
 <Arguments>
 ## 사용법
-`/forgen:code-review {리뷰 대상}`
+`/code-review {대상}`
 
 ### 예시
-- `/forgen:code-review` (기본: 최근 변경사항 리뷰)
-- `/forgen:code-review src/auth/login.ts`
-- `/forgen:code-review 최근 3개 커밋`
-- `/forgen:code-review PR #42`
+- `/code-review` (git diff HEAD)
+- `/code-review src/auth/login.ts`
+- `/code-review 42` (PR #42)
+- `/code-review HEAD~3..HEAD`
 
 ### 인자
-- 파일 경로, 커밋 범위, PR 번호 등을 지정
-- 인자 없으면 `git diff`로 변경사항을 자동 감지
+- 파일 경로, PR 번호, git range
+- 생략 시 git diff 자동 감지
 </Arguments>
 
 $ARGUMENTS
