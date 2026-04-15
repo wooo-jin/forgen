@@ -57,7 +57,7 @@ Forgen makes this happen. It profiles your work style, learns from your correcti
 ### First run (one time, ~1 minute)
 
 ```bash
-npm install -g /forgen
+npm install -g @wooojin/forgen
 forgen
 ```
 
@@ -116,8 +116,8 @@ Updated rules are rendered with your corrections included. Compound knowledge is
 ## Quick Start
 
 ```bash
-# 1. Install
-npm install -g /forgen
+# 1. Install (MUST use -g — forgen is a global CLI)
+npm install -g @wooojin/forgen
 
 # 2. First run — 4-question onboarding (English or Korean)
 forgen
@@ -240,6 +240,39 @@ Curated, compound-native skills. Each one integrates with accumulated knowledge 
 | `code-review` | "code review", "리뷰" | Confidence 1-10 calibration, Critical 5 categories (SQL/race/LLM trust/secrets/enum), auto-fix |
 | `architecture-decision` | "adr" | Weighted trade-off matrix, ADR lifecycle, reversibility classification |
 | `docker` | "docker", "컨테이너" | Multi-stage builds, security hardening, 10 failure modes
+
+### 12 built-in agents
+
+Sub-agents with physically separated tool access, `Failure_Modes_To_Avoid` sections, and Good/Bad examples. Invoked via `Agent(subagent_type: "ch-<name>")`. The `ch-` prefix avoids collisions with OMC / built-in Claude Code agents.
+
+**Read-only (investigation / review):**
+
+| Agent | Model | Role |
+|-------|:-----:|------|
+| `ch-explore` | Haiku | Fast codebase explorer — file/pattern search, structure mapping |
+| `ch-analyst` | Opus | Requirements analyst — uncovers hidden constraints via Socratic inquiry |
+| `ch-architect` | Opus | Strategic architecture advisor |
+| `ch-code-reviewer` | Opus | Unified reviewer — quality + security (OWASP) + performance (absorbs former `security-reviewer` / `performance-reviewer`) |
+| `ch-critic` | Opus | Final quality gate — plan/code verifier |
+
+**Plan-only:**
+
+| Agent | Model | Role |
+|-------|:-----:|------|
+| `ch-planner` | Opus | Strategic planning — decomposes tasks, identifies risks, creates actionable plans |
+
+**Write-enabled (implementation / verification):**
+
+| Agent | Model | Role |
+|-------|:-----:|------|
+| `ch-executor` | Sonnet | Code implementation — compound-aware, absorbs refactoring & simplification |
+| `ch-debugger` | Sonnet | Root-cause debugger — isolates regressions, analyzes stack traces |
+| `ch-test-engineer` | Sonnet | Test strategist — integration/E2E coverage, TDD, flaky-test hardening |
+| `ch-designer` | Sonnet | UI/UX — component architecture, accessibility, responsive design |
+| `ch-git-master` | Sonnet | Git workflows — atomic commits, rebasing, history management (Bash limited to git) |
+| `ch-verifier` | Sonnet | Completion verifier — evidence collection, test adequacy, manual test scenarios (compound-aware) |
+
+> Absorbed in this redesign: `security-reviewer` / `performance-reviewer` → `ch-code-reviewer`, `refactoring-expert` / `code-simplifier` → `ch-executor`, `qa-tester` → `ch-verifier`, `scientist` / `writer` removed.
 
 ### Session management
 
