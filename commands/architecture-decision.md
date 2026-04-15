@@ -1,6 +1,6 @@
 ---
-name: architecture-decision
-description: This skill should be used when the user asks to "adr,architecture decision,아키텍처 결정,설계 결정,기술 결정". ADR 생성 -- 대안 평가, 가중 트레이드오프 매트릭스, 결정 라이프사이클 관리
+name: ch-architecture-decision
+description: This skill should be used when the user asks to "adr,ch-architecture decision,아키텍처 결정,설계 결정,기술 결정". ADR 생성 -- 대안 평가, 가중 트레이드오프 매트릭스, 결정 라이프사이클 관리
 argument-hint: "[결정 주제]"
 model: opus
 allowed-tools:
@@ -15,7 +15,7 @@ allowed-tools:
   - mcp__forgen-compound__compound-list
 triggers:
   - "adr"
-  - "architecture decision"
+  - "ch-architecture decision"
   - "아키텍처 결정"
   - "설계 결정"
   - "기술 결정"
@@ -167,13 +167,13 @@ Positive / Negative / Risks / Follow-up
 
 <Arguments>
 ## 사용법
-`/forgen:architecture-decision {결정 주제}`
+`/forgen:ch-architecture-decision {결정 주제}`
 
 ### 예시
-- `/forgen:architecture-decision 상태 관리 라이브러리 선택`
-- `/forgen:architecture-decision 모놀리스 → 마이크로서비스 전환`
-- `/forgen:architecture-decision 인증 방식 결정 (JWT vs Session)`
-- `/forgen:architecture-decision 데이터베이스 선택 (PostgreSQL vs MongoDB)`
+- `/forgen:ch-architecture-decision 상태 관리 라이브러리 선택`
+- `/forgen:ch-architecture-decision 모놀리스 → 마이크로서비스 전환`
+- `/forgen:ch-architecture-decision 인증 방식 결정 (JWT vs Session)`
+- `/forgen:ch-architecture-decision 데이터베이스 선택 (PostgreSQL vs MongoDB)`
 
 ### 인자
 - 결정이 필요한 주제, 배경, 제약 조건 등을 설명

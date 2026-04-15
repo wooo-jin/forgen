@@ -138,7 +138,7 @@ npx vitest run --coverage 2>/dev/null || true
 
 ## Step 4: Pre-landing 리뷰
 
-code-reviewer 에이전트(READ-ONLY) 위임.
+ch-code-reviewer 에이전트(READ-ONLY) 위임.
 
 ```bash
 git diff $BASE...HEAD

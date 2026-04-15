@@ -1,6 +1,6 @@
 <!-- forgen-managed -->
 ---
-name: executor
+name: ch-executor
 description: Code implementation specialist — compound-aware, absorbs refactoring and simplification
 model: sonnet
 maxTurns: 50

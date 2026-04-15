@@ -1,6 +1,6 @@
 <!-- forgen-managed -->
 ---
-name: debugger
+name: ch-debugger
 description: Root-cause debugger — isolates regressions and analyzes stack traces
 model: sonnet
 maxTurns: 30

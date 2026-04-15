@@ -223,7 +223,7 @@ ambiguity > 0.35 -> "인터뷰 계속 필요."
 ## Technical Context
 ## Key Entities (ontology table)
 ## Ontology Convergence (round-by-round stability)
-## Next Action: /forge-loop | /architecture-decision | manual
+## Next Action: /forge-loop | /ch-architecture-decision | manual
 ```
 
 <Failure_Modes>

@@ -1,6 +1,6 @@
 <!-- forgen-managed -->
 ---
-name: verifier
+name: ch-verifier
 description: Completion verifier — evidence collection, test adequacy, manual test scenarios
 model: sonnet
 maxTurns: 20

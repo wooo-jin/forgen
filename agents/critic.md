@@ -1,6 +1,6 @@
 <!-- forgen-managed -->
 ---
-name: critic
+name: ch-critic
 description: Final quality gate — plan/code verifier (READ-ONLY)
 model: opus
 maxTurns: 10

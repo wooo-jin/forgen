@@ -1,6 +1,6 @@
 <!-- forgen-managed -->
 ---
-name: analyst
+name: ch-analyst
 description: Requirements analyst — uncovers hidden constraints via Socratic inquiry
 model: opus
 maxTurns: 15

@@ -1,6 +1,6 @@
 <!-- forgen-managed -->
 ---
-name: architect
+name: ch-architect
 description: Strategic architecture advisor (READ-ONLY)
 model: opus
 maxTurns: 15

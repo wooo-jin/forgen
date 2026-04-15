@@ -1,6 +1,6 @@
 <!-- forgen-managed -->
 ---
-name: explore
+name: ch-explore
 description: Fast codebase explorer — file/pattern search, structure mapping (READ-ONLY)
 model: haiku
 maxTurns: 10

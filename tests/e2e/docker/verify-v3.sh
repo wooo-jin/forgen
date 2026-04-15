@@ -158,6 +158,19 @@ else
   fail "executor agent missing maxTurns"
 fi
 
+# 모든 에이전트의 name 필드가 ch-* 접두사로 등록되어 있는지 (Claude Code 호출 충돌 방지)
+NAME_CONFLICT_COUNT=0
+for agent in analyst architect code-reviewer critic debugger designer executor explore git-master planner test-engineer verifier; do
+  NAME=$(grep "^name:" /workspace/test-project/.claude/agents/ch-$agent.md | head -1 | sed 's/name: *//')
+  if [ "$NAME" != "ch-$agent" ]; then
+    NAME_CONFLICT_COUNT=$((NAME_CONFLICT_COUNT + 1))
+    fail "$agent frontmatter name='$NAME' (expected 'ch-$agent' to avoid conflict with OMC/builtin)"
+  fi
+done
+if [ "$NAME_CONFLICT_COUNT" = "0" ]; then
+  pass "all 12 agents use ch-* name (no conflict with OMC/builtin agents)"
+fi
+
 echo ""
 
 # ──────────────────────────────────────────

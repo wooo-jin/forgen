@@ -22,7 +22,7 @@ triggers:
 
 <Purpose>
 주어진 작업을 User Story + 수용 기준으로 분해하고, 모든 스토리가 검증을 통과할 때까지
-planner -> executor -> verifier 사이클을 반복합니다.
+ch-planner -> ch-executor -> ch-verifier 사이클을 반복합니다.
 스토리 하나가 완료되면 멈추지 않고 즉시 다음 스토리로 진행합니다.
 사용자에게 보고하는 시점은 "전부 완료", "에스컬레이션", "컨텍스트 한계" 세 가지뿐입니다.
 </Purpose>
@@ -115,7 +115,7 @@ EOF
 
 ### 2-5. 스토리 완료 판정
 - 모든 AC PASS -> `passes: true` -> 즉시 다음 스토리 (보고하지 않음)
-- FAIL -> `attempts++` -> debugger -> executor -> verifier 재실행
+- FAIL -> `attempts++` -> ch-debugger -> ch-executor -> ch-verifier 재실행
 - attempt == 3 -> 에스컬레이션
 
 ## Anti-Polite-Stop 규칙

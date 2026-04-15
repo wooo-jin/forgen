@@ -1,6 +1,6 @@
 <!-- forgen-managed -->
 ---
-name: test-engineer
+name: ch-test-engineer
 description: Test strategist — integration/E2E coverage, TDD, flaky test hardening
 model: sonnet
 maxTurns: 30

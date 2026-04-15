@@ -1,6 +1,6 @@
 <!-- forgen-managed -->
 ---
-name: planner
+name: ch-planner
 description: Strategic planning — decomposes tasks, identifies risks, creates actionable plans
 model: opus
 permissionMode: plan

@@ -1,6 +1,6 @@
 <!-- forgen-managed -->
 ---
-name: designer
+name: ch-designer
 description: UI/UX designer — component architecture, accessibility, responsive design
 model: sonnet
 maxTurns: 30

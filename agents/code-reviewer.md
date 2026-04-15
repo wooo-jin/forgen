@@ -1,6 +1,6 @@
 <!-- forgen-managed -->
 ---
-name: code-reviewer
+name: ch-code-reviewer
 description: Unified code reviewer — quality, security (OWASP), performance. Use for all code review tasks.
 model: opus
 maxTurns: 15
