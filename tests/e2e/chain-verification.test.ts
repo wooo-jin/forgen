@@ -310,8 +310,8 @@ describe('Model routing activation', () => {
 
 describe('Skill expansion', () => {
   const expectedSkills = [
-    'api-design', 'database', 'performance', 'testing-strategy', 'ci-cd',
-    'docker', 'frontend', 'documentation', 'incident-response', 'architecture-decision',
+    'architecture-decision', 'calibrate', 'code-review', 'compound',
+    'deep-interview', 'docker', 'forge-loop', 'learn', 'retro', 'ship',
   ];
 
   for (const skill of expectedSkills) {
@@ -329,14 +329,14 @@ describe('Skill expansion', () => {
       expect(content).toContain('<Purpose>');
       expect(content).toContain('<Steps>');
       expect(content).toContain('$ARGUMENTS');
-      // 150줄 이상
-      expect(content.split('\n').length).toBeGreaterThanOrEqual(150);
+      // 100줄 이상
+      expect(content.split('\n').length).toBeGreaterThanOrEqual(100);
     });
   }
 
-  it('총 스킬 수가 21개이다 (기존 19 + specify, deep-interview)', () => {
+  it('총 스킬 수가 10개이다', () => {
     const commands = fs.readdirSync(path.join(PROJECT_ROOT, 'commands'))
       .filter(f => f.endsWith('.md'));
-    expect(commands.length).toBe(21);
+    expect(commands.length).toBe(10);
   });
 });

@@ -118,9 +118,10 @@ describe('matchSkills', () => {
   });
 
   it('대소문자 무시 매칭', () => {
-    // tdd는 keyword-detector가 처리하므로 skill-injector에서 제외됨 (이중 주입 방지)
+    // tdd는 keyword-detector 목록에서 제거되었으므로 skill-injector에서 정상 매칭됨
     const matched = matchSkills('TDD 방식으로 구현', skills);
-    expect(matched).toHaveLength(0);
+    expect(matched).toHaveLength(1);
+    expect(matched[0].name).toBe('tdd');
   });
 
   it('매칭 없음', () => {
@@ -185,13 +186,13 @@ describe('keyword-detector 스킬 이중 주입 방지', () => {
     expect(matched).toHaveLength(0);
   });
 
-  it('ecomode는 keyword-detector가 처리하므로 skill-injector에서 제외된다', () => {
-    expect(keywordDetectorSkillNames.has('ecomode')).toBe(true);
+  it('ecomode는 keyword-detector 목록에서 제거되어 skill-injector에서 정상 매칭된다', () => {
+    expect(keywordDetectorSkillNames.has('ecomode')).toBe(false);
     const skills: SkillMeta[] = [
       { name: 'ecomode', description: '', triggers: ['ecomode'], filePath: '', content: '' },
     ];
     const matched = matchSkills('ecomode 모드', skills);
-    expect(matched).toHaveLength(0);
+    expect(matched).toHaveLength(1);
   });
 
   it('ultrawork, team, ccg 등도 keyword-detector 담당', () => {

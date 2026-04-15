@@ -46,14 +46,22 @@ describe('contract consistency', () => {
         .map((entry) => [entry.keyword, entry.skill]),
     );
 
-    expect(routedAsSkills.get('tdd')).toBe('tdd');
+    // 유지된 스킬
     expect(routedAsSkills.get('code-review')).toBe('code-review');
-    expect(routedAsSkills.get('security-review')).toBe('security-review');
-    expect(routedAsSkills.get('git-master')).toBe('git-master');
-    expect(routedAsSkills.get('migrate')).toBe('migrate');
-    expect(routedAsSkills.get('debug-detective')).toBe('debug-detective');
-    expect(routedAsSkills.get('refactor')).toBe('refactor');
-    expect(routedAsSkills.get('ecomode')).toBe('ecomode');
+    expect(routedAsSkills.get('deep-interview')).toBe('deep-interview');
+
+    // 신규 스킬
+    expect(routedAsSkills.get('forge-loop')).toBe('forge-loop');
+    expect(routedAsSkills.get('ship')).toBe('ship');
+    expect(routedAsSkills.get('retro')).toBe('retro');
+    expect(routedAsSkills.get('learn')).toBe('learn');
+    expect(routedAsSkills.get('calibrate')).toBe('calibrate');
+
+    // 삭제된 스킬은 더 이상 존재하지 않음
+    expect(routedAsSkills.has('tdd')).toBe(false);
+    expect(routedAsSkills.has('refactor')).toBe(false);
+    expect(routedAsSkills.has('ecomode')).toBe(false);
+    expect(routedAsSkills.has('git-master')).toBe(false);
   });
 
   it('compound preview/save flow is documented in the primary entry docs', () => {

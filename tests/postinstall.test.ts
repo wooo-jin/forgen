@@ -57,8 +57,8 @@ describe('postinstall', () => {
 
     it('should not overwrite user-customized files', () => {
       fs.mkdirSync(COMMANDS_DIR, { recursive: true });
-      const customFile = path.join(COMMANDS_DIR, 'tdd.md');
-      fs.writeFileSync(customFile, '# My custom TDD workflow\nUser-customized content');
+      const customFile = path.join(COMMANDS_DIR, 'ship.md');
+      fs.writeFileSync(customFile, '# My custom ship workflow\nUser-customized content');
 
       runPostinstall();
 
@@ -69,7 +69,7 @@ describe('postinstall', () => {
 
     it('should update existing forgen-managed files', () => {
       fs.mkdirSync(COMMANDS_DIR, { recursive: true });
-      const managedFile = path.join(COMMANDS_DIR, 'tdd.md');
+      const managedFile = path.join(COMMANDS_DIR, 'ship.md');
       fs.writeFileSync(managedFile, '# Old version\n\n<!-- forgen-managed -->\n\nOld content');
 
       runPostinstall();

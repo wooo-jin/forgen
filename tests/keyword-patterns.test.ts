@@ -85,10 +85,10 @@ describe('keyword patterns', () => {
   });
 
   it('겹치는 스킬 이름은 skill 경로로 통일된다', () => {
-    expect(detectKeyword('tdd 해줘')?.type).toBe('skill');
     expect(detectKeyword('code review 해줘')?.type).toBe('skill');
-    expect(detectKeyword('migrate 해줘')?.type).toBe('skill');
-    expect(detectKeyword('refactor 시작')?.type).toBe('skill');
+    expect(detectKeyword('forge-loop 시작')?.type).toBe('skill');
+    expect(detectKeyword('ship')?.type).toBe('skill');
+    expect(detectKeyword('retro')?.type).toBe('skill');
   });
 
   it('reasoning/search inject keyword는 workflow tracking 대상이 아니다', () => {
@@ -96,9 +96,9 @@ describe('keyword patterns', () => {
     expect(shouldTrackWorkflowActivation({ type: 'inject', keyword: 'deepsearch' })).toBe(false);
   });
 
-  it('workflow 성격의 inject와 skill keyword는 tracking 대상이다', () => {
-    expect(shouldTrackWorkflowActivation({ type: 'inject', keyword: 'benchmark' })).toBe(true);
-    expect(shouldTrackWorkflowActivation({ type: 'skill', keyword: 'tdd', skill: 'tdd' })).toBe(true);
+  it('workflow 성격의 skill keyword는 tracking 대상이다', () => {
+    expect(shouldTrackWorkflowActivation({ type: 'skill', keyword: 'forge-loop', skill: 'forge-loop' })).toBe(true);
+    expect(shouldTrackWorkflowActivation({ type: 'skill', keyword: 'ship', skill: 'ship' })).toBe(true);
   });
 
   // ── 오탐 방지 테스트 ──
@@ -118,66 +118,42 @@ describe('keyword patterns', () => {
     expect(detectKeyword('코드 좀 정리해줘')).toBeNull();
   });
 
-  it('"ecomode 켜줘" → ecomode 트리거 됨', () => {
-    expect(detectKeyword('ecomode 켜줘')?.keyword).toBe('ecomode');
+  // ── 새 키워드 테스트 ──
+
+  it('"forge-loop 시작" → forge-loop 트리거 됨', () => {
+    expect(detectKeyword('forge-loop 시작')?.keyword).toBe('forge-loop');
   });
 
-  it('한글 "리팩토링 시작"이 매칭된다 (Korean boundary fix)', () => {
-    expect(detectKeyword('리팩토링 시작')?.keyword).toBe('refactor');
+  it('"끝까지 해줘" → forge-loop 트리거 됨', () => {
+    expect(detectKeyword('끝까지 해줘')?.keyword).toBe('forge-loop');
   });
 
-  it('한글 "에코 모드"가 매칭된다 (Korean boundary fix)', () => {
-    expect(detectKeyword('에코 모드 활성화')?.keyword).toBe('ecomode');
+  it('"ship" → ship 트리거 됨', () => {
+    expect(detectKeyword('ship')?.keyword).toBe('ship');
   });
 
-  it('한글 "토큰 절약"이 매칭된다 (Korean boundary fix)', () => {
-    expect(detectKeyword('토큰 절약 모드 시작')?.keyword).toBe('ecomode');
+  it('"배포 해줘" → ship 트리거 됨', () => {
+    expect(detectKeyword('배포 해줘')?.keyword).toBe('ship');
   });
 
-  it('한글 "마이그레이션 시작"이 매칭된다 (Korean boundary fix)', () => {
-    expect(detectKeyword('마이그레이션 시작')?.keyword).toBe('migrate');
+  it('"retro" → retro 트리거 됨', () => {
+    expect(detectKeyword('retro')?.keyword).toBe('retro');
   });
 
-  it('한글 "리팩터 해줘"가 매칭된다 (Korean boundary fix)', () => {
-    expect(detectKeyword('리팩터 해줘')?.keyword).toBe('refactor');
+  it('"회고 하자" → retro 트리거 됨', () => {
+    expect(detectKeyword('회고 하자')?.keyword).toBe('retro');
   });
 
-  it('영문 키워드 migrate + 명시적 동작은 매칭된다', () => {
-    expect(detectKeyword('migrate 해줘')?.keyword).toBe('migrate');
+  it('"learn prune" → learn 트리거 됨', () => {
+    expect(detectKeyword('learn prune')?.keyword).toBe('learn');
   });
 
-  it('영문 키워드 migrate 단독은 매칭하지 않는다 (false positive 방지)', () => {
-    expect(detectKeyword('migrate the database')).toBeNull();
+  it('"calibrate" → calibrate 트리거 됨', () => {
+    expect(detectKeyword('calibrate')?.keyword).toBe('calibrate');
   });
 
-  it('영문 키워드 refactor + 명시적 동작은 매칭된다', () => {
-    expect(detectKeyword('refactor 시작')?.keyword).toBe('refactor');
-  });
-
-  it('영문 키워드 refactoring 단독은 매칭하지 않는다 (false positive 방지)', () => {
-    expect(detectKeyword('refactoring is needed')).toBeNull();
-  });
-
-  // ── specify 키워드 (Tier 2-G) ──
-
-  it('"specify"를 감지한다', () => {
-    const result = detectKeyword('specify 사용자 인증 시스템');
-    expect(result).not.toBeNull();
-    expect(result!.keyword).toBe('specify');
-    expect(result!.type).toBe('skill');
-    expect(result!.skill).toBe('specify');
-  });
-
-  it('"명세"를 감지한다', () => {
-    const result = detectKeyword('명세 결제 API');
-    expect(result).not.toBeNull();
-    expect(result!.keyword).toBe('specify');
-  });
-
-  it('"요구사항 정리"를 감지한다', () => {
-    const result = detectKeyword('요구사항 정리 해줘');
-    expect(result).not.toBeNull();
-    expect(result!.keyword).toBe('specify');
+  it('"프로필 보정" → calibrate 트리거 됨', () => {
+    expect(detectKeyword('프로필 보정')?.keyword).toBe('calibrate');
   });
 
   it('"deep-interview"를 감지한다', () => {
