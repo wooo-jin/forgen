@@ -5,10 +5,11 @@
  * Claude Code UserPromptSubmit 훅으로 등록.
  * 프롬프트와 매칭되는 학습된 스킬을 자동으로 컨텍스트에 주입합니다.
  *
- * 스킬 파일 위치:
+ * 스킬 파일 위치 (우선순위):
+ *   0. {project}/.forgen/skills/*.md    (프로젝트 포지 스킬 — 최우선)
  *   1. {project}/.compound/skills/*.md  (프로젝트 스킬)
- *   2. ~/.compound/skills/*.md          (글로벌 스킬)
- *   3. ~/.compound/me/skills/*.md       (개인 학습 스킬)
+ *   2. ~/.forgen/me/skills/*.md         (개인 학습 스킬)
+ *   3. ~/.forgen/skills/*.md            (글로벌 스킬)
  *
  * 스킬 포맷:
  *   ---
@@ -201,8 +202,9 @@ function collectSkills(): SkillMeta[] {
   // 패키지 내장 스킬 경로 (dist/../skills/)
   const pkgSkillsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'commands');
 
-  // v1: 팀 팩 스킬 제거. 프로젝트 > 개인 > 글로벌 > 패키지 내장
+  // 프로젝트 .forgen > 프로젝트 .compound > 개인 > 글로벌 > 패키지 내장
   const dirs = [
+    path.join(process.cwd(), '.forgen', 'skills'),
     path.join(process.cwd(), '.compound', 'skills'),
     path.join(ME_DIR, 'skills'),
     path.join(FORGEN_HOME, 'skills'),

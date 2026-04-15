@@ -47,7 +47,7 @@ export interface KeywordMatch {
   message?: string;
 }
 
-const WORKFLOW_TRACKED_INJECTS = new Set(['benchmark']);
+const WORKFLOW_TRACKED_INJECTS = new Set<string>();
 
 export function shouldTrackWorkflowActivation(match: KeywordMatch): boolean {
   if (match.type === 'inject') return WORKFLOW_TRACKED_INJECTS.has(match.keyword);
@@ -79,23 +79,19 @@ export const KEYWORD_PATTERNS: Array<{
   { pattern: /\bccg\b/i, keyword: 'ccg', type: 'skill', skill: 'ccg' },
   { pattern: /\bralplan\b/i, keyword: 'ralplan', type: 'skill', skill: 'ralplan' },
   { pattern: /\bdeep[- ]?interview\b/i, keyword: 'deep-interview', type: 'skill', skill: 'deep-interview' },
-  { pattern: /\bspecify\b|(?:^|\s)(명세|요구사항\s*정리|스펙\s*정리)(?:\s|$)/im, keyword: 'specify', type: 'skill', skill: 'specify' },
   { pattern: /\bpipeline\b/i, keyword: 'pipeline', type: 'skill', skill: 'pipeline' },
-  { pattern: /\becomode\b|(?:^|\s)(에코\s*모드|토큰\s*절약)(?:\s|$)/im, keyword: 'ecomode', type: 'skill', skill: 'ecomode' },
 
   // 인젝션 모드
   { pattern: /\bultrathink\b/i, keyword: 'ultrathink', type: 'inject' },
   { pattern: /\bdeepsearch\b/i, keyword: 'deepsearch', type: 'inject' },
-  { pattern: /(?:^|\s)tdd(?:\s+(?:모드|mode|방식|으로|해|해줘|시작|적용)|\s*$)/im, keyword: 'tdd', type: 'skill', skill: 'tdd' },
   { pattern: /(?:code[- ]?review|코드\s*리뷰)\s*(?:해|해줘|시작|해봐|부탁|mode|모드)/i, keyword: 'code-review', type: 'skill', skill: 'code-review' },
-  { pattern: /(?:security[- ]?review|보안\s*리뷰|보안\s*검토)\s*(?:해|해줘|시작|해봐|부탁|mode|모드)/i, keyword: 'security-review', type: 'skill', skill: 'security-review' },
 
-  // 실용 스킬 — 명시적 모드 호출만 매칭 (일상 단어 false positive 방지)
-  { pattern: /\bgit[- ]?master\b/i, keyword: 'git-master', type: 'skill', skill: 'git-master' },
-  { pattern: /\b(benchmark)\s*(?:mode|모드|해|해줘|시작|실행|돌려)|(?:^|\s)(벤치마크)\s*(?:mode|모드|해|해줘|시작|실행|돌려)|(?:^|\s)성능\s*측정/im, keyword: 'benchmark', type: 'inject' },
-  { pattern: /\b(migrate)\s*(?:mode|모드|해|해줘|시작|실행|진행)|(?:^|\s)(마이그레이션)\s*(?:mode|모드|해|해줘|시작|실행|진행)/im, keyword: 'migrate', type: 'skill', skill: 'migrate' },
-  { pattern: /\b(debug[- ]?detective)\b|(?:^|\s)(디버그\s*탐정|체계적\s*디버깅)(?:\s|$)/im, keyword: 'debug-detective', type: 'skill', skill: 'debug-detective' },
-  { pattern: /\b(refactor)\s*(?:mode|모드|해|해줘|시작|실행|진행)|(?:^|\s)(리팩토링|리팩터)\s*(?:mode|모드|해|해줘|시작|실행|진행)/im, keyword: 'refactor', type: 'skill', skill: 'refactor' },
+  // forgen 핵심 스킬
+  { pattern: /\b(forge[- ]?loop|포지[- ]?루프)\b|(?:^|\s)(끝까지|don'?t\s*stop)(?:\s|$)/im, keyword: 'forge-loop', type: 'skill', skill: 'forge-loop' },
+  { pattern: /(?:^|\s)ship(?:\s|$)|(?:^|\s)(배포|릴리스)\s*(?:해|해줘|하자|시작|진행)/im, keyword: 'ship', type: 'skill', skill: 'ship' },
+  { pattern: /\bretro\b|(?:^|\s)(회고|돌아보기)(?:\s|$)/im, keyword: 'retro', type: 'skill', skill: 'retro' },
+  { pattern: /(?:^|\s)learn\s+(?:search|prune|stats|export)|(?:^|\s)(학습\s*관리|compound\s*정리|솔루션\s*정리)/im, keyword: 'learn', type: 'skill', skill: 'learn' },
+  { pattern: /\bcalibrate\b|(?:^|\s)(캘리브|프로필\s*보정|프로필\s*조정|프로필\s*확인)(?:\s|$)/im, keyword: 'calibrate', type: 'skill', skill: 'calibrate' },
 ];
 
 // ── 인젝션 메시지 ──
@@ -118,107 +114,14 @@ Perform comprehensive codebase exploration before answering:
 5. Present a complete, evidence-based analysis
 </compound-deepsearch>`,
 
-  tdd: `<compound-tdd>
-TDD MODE ACTIVATED.
-Follow strict Test-Driven Development:
-1. Write the failing test FIRST (Red)
-2. Write the minimum code to pass (Green)
-3. Refactor while keeping tests green (Refactor)
-4. Repeat for each requirement
-Never write implementation before tests.
-</compound-tdd>`,
-
-  'code-review': `<compound-code-review>
-CODE REVIEW MODE ACTIVATED.
-Perform thorough code review with severity ratings:
-- 🔴 CRITICAL: Security vulnerabilities, data loss risks, crashes
-- 🟡 MAJOR: Logic errors, performance issues, missing error handling
-- 🔵 MINOR: Style, naming, documentation improvements
-- 💡 SUGGESTION: Optional enhancements
-Provide file:line references for every finding.
-</compound-code-review>`,
-
-  'security-review': `<compound-security-review>
-SECURITY REVIEW MODE ACTIVATED.
-Check for OWASP Top 10 and common vulnerabilities:
-1. Injection (SQL, XSS, Command)
-2. Broken Authentication / Authorization
-3. Sensitive Data Exposure
-4. Security Misconfiguration
-5. Insecure Dependencies
-6. Secrets in code (API keys, tokens, passwords)
-7. Input validation gaps
-8. Unsafe deserialization
-Rate each finding: CRITICAL / HIGH / MEDIUM / LOW
-</compound-security-review>`,
-
-  'git-master': `<compound-git-master>
-GIT MASTER MODE ACTIVATED.
-Apply atomic commit strategy and clean history management:
-1. One commit = one logical change (atomic)
-2. Follow Conventional Commits: feat/fix/refactor/docs/chore(<scope>): <subject>
-3. Use interactive rebase (git rebase -i) to clean up WIP commits before pushing
-4. Never force-push to shared branches (main, develop)
-5. Use git bisect for systematic bug hunt across commits
-Commit message format: <type>(<scope>): <subject> — imperative, 50 chars max
-</compound-git-master>`,
-
-  benchmark: `<compound-benchmark>
-BENCHMARK MODE ACTIVATED.
-Measure performance with statistical rigor:
-1. Collect baseline metrics FIRST (before any changes)
-2. Run minimum 30 iterations (skip first 5 as warmup)
-3. Calculate: avg, p95, p99, min, max
-4. Measure: execution time (performance.now()), memory (process.memoryUsage()), bundle size
-5. Output before/after comparison table with delta percentages
-6. Use same environment for both measurements to ensure validity
-</compound-benchmark>`,
-
-  migrate: `<compound-migrate>
-MIGRATION MODE ACTIVATED.
-Follow the 5-phase safe migration workflow:
-1. ANALYZE: Document current state, identify breaking changes, map affected files
-2. PLAN: Decompose into atomic steps, define rollback triggers (error rate > N%)
-3. BACKUP: Create DB dump + git tag as restore point before any changes
-4. EXECUTE: Apply Expand-Contract pattern for zero-downtime DB changes
-5. VERIFY: Run E2E tests, check data integrity, validate performance regression
-Rollback criteria: error rate spike, latency > 2x baseline, data inconsistency
-</compound-migrate>`,
-
-  'debug-detective': `<compound-debug-detective>
-DEBUG DETECTIVE MODE ACTIVATED.
-Follow the Reproduce → Isolate → Fix → Verify loop:
-1. REPRODUCE: Document exact conditions, input, expected vs actual, reproduction rate
-2. ISOLATE: Classify error type (runtime/type/logic/async), use git bisect for regression
-3. FIX: Address root cause (not symptoms), minimize change scope
-4. VERIFY: Add regression test, confirm fix in staging before production
-Error classification:
-- Runtime: TypeError/ReferenceError → trace stack
-- Logic: wrong output → add intermediate logging
-- Async: race condition → check Promise chain, event ordering
-Never guess — always reproduce first.
-</compound-debug-detective>`,
-
-  refactor: `<compound-refactor>
-REFACTOR MODE ACTIVATED.
-Safe refactoring with test-first approach:
-1. SECURE TESTS: Characterization tests for untested code before touching anything
-2. IDENTIFY SMELLS: Long functions (>50 lines), duplication, deep nesting (>3), magic numbers
-3. APPLY SOLID: Single responsibility, Open-closed, Liskov, Interface segregation, Dependency inversion
-4. REFACTOR CATALOG: Extract Method, Move Method, Replace Conditional with Polymorphism
-5. VERIFY: Run full test suite after each refactoring step
-Rules:
-- Never mix refactoring + feature changes in the same commit
-- One refactoring pattern per commit
-- Keep tests green at all times
-</compound-refactor>`,
 };
 
 // ── 스킬 파일 로드 ──
 
 function loadSkillContent(skillName: string): string | null {
-  // 스킬 파일 검색 순서: 프로젝트 > 연결된 팩 > 글로벌 팩 > 글로벌 > 패키지 내장
+  // 스킬 파일 검색 순서: 프로젝트 .forgen > 프로젝트 .compound > 팩 > 개인 > 글로벌 > 패키지 내장
   const searchPaths = [
+    path.join(process.cwd(), '.forgen', 'skills', `${skillName}.md`),
     path.join(process.cwd(), '.compound', 'skills', `${skillName}.md`),
     path.join(process.cwd(), 'skills', `${skillName}.md`),
   ];
@@ -356,12 +259,15 @@ async function main(): Promise<void> {
       const ralphLoopState = path.join(cancelCwd, '.claude', 'ralph-loop.local.md');
       try { fs.unlinkSync(ralphLoopState); } catch { /* 파일 없으면 무시 */ }
     } else {
-      // 모든 모드 상태 초기화 (ralplan, deep-interview 포함)
+      // 모든 모드 상태 초기화 (ralplan, deep-interview, forge-loop 등 포함)
       for (const mode of ALL_MODES) {
         clearState(`${mode}-state`);
       }
       const ralphLoopState = path.join(cancelCwd, '.claude', 'ralph-loop.local.md');
       try { fs.unlinkSync(ralphLoopState); } catch { /* 파일 없으면 무시 */ }
+      // forge-loop 상태 파일도 명시적으로 삭제 (Stop 훅 차단 해제)
+      const forgeLoopState = path.join(STATE_DIR, 'forge-loop.json');
+      try { fs.unlinkSync(forgeLoopState); } catch { /* 파일 없으면 무시 */ }
     }
     // skill-cache 파일도 정리 (재주입 가능하도록)
     cleanSkillCaches();

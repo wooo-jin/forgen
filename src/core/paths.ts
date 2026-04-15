@@ -120,8 +120,19 @@ export const V1_GLOBAL_CONFIG = GLOBAL_CONFIG;
 
 /** 모든 실행 모드 이름 (cancel/recovery 시 사용) */
 export const ALL_MODES = [
-  'ralph', 'autopilot', 'ultrawork', 'team', 'pipeline',
-  'ccg', 'ralplan', 'deep-interview', 'ecomode', 'specify',
+  'ralph',
+  'autopilot',
+  'ultrawork',
+  'team',
+  'pipeline',
+  'ccg',
+  'ralplan',
+  'deep-interview',
+  'forge-loop',
+  'ship',
+  'retro',
+  'learn',
+  'calibrate',
 ] as const;
 
 /** {repo}/.compound/ — 프로젝트 로컬 디렉토리 */
