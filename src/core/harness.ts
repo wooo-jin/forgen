@@ -21,6 +21,8 @@ import { buildEnv, generateClaudeRuleFiles, registerTmuxBindings } from './confi
 import { createLogger } from './logger.js';
 import { HANDOFFS_DIR, ME_BEHAVIOR, ME_DIR, ME_RULES, ME_SKILLS, ME_SOLUTIONS, SESSIONS_DIR, STATE_DIR, FORGEN_HOME } from './paths.js';
 import { RULE_FILE_CAPS } from '../hooks/shared/injection-caps.js';
+import { generateHooksJson } from '../hooks/hooks-generator.js';
+import { type RuntimeHost } from './types.js';
 import {
   acquireLock,
   atomicWriteFileSync,
@@ -41,6 +43,7 @@ export interface V1HarnessContext {
   cwd: string;
   inTmux: boolean;
   v1: V1BootstrapResult;
+  runtime: RuntimeHost;
 }
 
 /** forgen 패키지 루트 */
@@ -133,7 +136,11 @@ function isForgenHookEntry(entry: Record<string, unknown>, pkgRoot: string): boo
 }
 
 /** Strip existing forgen hooks from settings, merge fresh hooks.json. */
-function mergeHooksIntoSettings(settings: Record<string, unknown>): void {
+function mergeHooksIntoSettings(
+  settings: Record<string, unknown>,
+  runtime: RuntimeHost,
+  cwd: string,
+): void {
   const pkgRoot = getPackageRoot();
   const hooksConfig = (settings.hooks as Record<string, unknown[]>) ?? {};
 
@@ -145,19 +152,27 @@ function mergeHooksIntoSettings(settings: Record<string, unknown>): void {
     else hooksConfig[event] = filtered;
   }
 
-  // Read hooks.json and inject, replacing ${CLAUDE_PLUGIN_ROOT}
-  const hooksJsonPath = path.join(pkgRoot, 'hooks', 'hooks.json');
   try {
-    if (fs.existsSync(hooksJsonPath)) {
-      const hooksJson = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf-8'));
-      const hooksData = hooksJson.hooks as Record<string, unknown[]> | undefined;
-      if (hooksData) {
-        const resolved = JSON.parse(
-          JSON.stringify(hooksData).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pkgRoot),
-        ) as Record<string, unknown[]>;
-        for (const [event, handlers] of Object.entries(resolved)) {
-          if (!hooksConfig[event]) hooksConfig[event] = [];
-          (hooksConfig[event] as unknown[]).push(...handlers);
+    if (runtime === 'codex') {
+      const generated = generateHooksJson({ cwd, runtime, pluginRoot: path.join(pkgRoot, 'dist') });
+      for (const [event, handlers] of Object.entries(generated.hooks)) {
+        if (!hooksConfig[event]) hooksConfig[event] = [];
+        (hooksConfig[event] as unknown[]).push(...handlers);
+      }
+    } else {
+      // Read hooks.json and inject, replacing ${CLAUDE_PLUGIN_ROOT}
+      const hooksJsonPath = path.join(pkgRoot, 'hooks', 'hooks.json');
+      if (fs.existsSync(hooksJsonPath)) {
+        const hooksJson = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf-8'));
+        const hooksData = hooksJson.hooks as Record<string, unknown[]> | undefined;
+        if (hooksData) {
+          const resolved = JSON.parse(
+            JSON.stringify(hooksData).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pkgRoot),
+          ) as Record<string, unknown[]>;
+          for (const [event, handlers] of Object.entries(resolved)) {
+            if (!hooksConfig[event]) hooksConfig[event] = [];
+            (hooksConfig[event] as unknown[]).push(...handlers);
+          }
         }
       }
     }
@@ -205,7 +220,12 @@ function applyTrustPolicyPermissions(settings: Record<string, unknown>, v1Result
  * atomic write). Each phase is now a named function with a single
  * responsibility, testable in isolation if needed.
  */
-function injectSettings(env: Record<string, string>, v1Result: V1BootstrapResult): void {
+function injectSettings(
+  env: Record<string, string>,
+  v1Result: V1BootstrapResult,
+  runtime: RuntimeHost,
+  cwd: string,
+): void {
   fs.mkdirSync(CLAUDE_DIR, { recursive: true });
   acquireLock();
 
@@ -215,7 +235,7 @@ function injectSettings(env: Record<string, string>, v1Result: V1BootstrapResult
   settings.env = { ...((settings.env as Record<string, string>) ?? {}), ...env };
 
   applyStatusLine(settings);
-  mergeHooksIntoSettings(settings);
+  mergeHooksIntoSettings(settings, runtime, cwd);
   applyTrustPolicyPermissions(settings, v1Result);
 
   try {
@@ -294,6 +314,54 @@ function installAgentsFromDir(
   }
 }
 
+/**
+ * 현재 source에 없는 stale ch-*.md 에이전트 파일을 정리.
+ * forgen-managed 마커가 있는 파일만 삭제 (사용자 수정 파일 보호).
+ */
+function cleanupStaleAgents(
+  sourceDir: string,
+  targetDir: string,
+  prefix: string,
+  hashes: Record<string, string>,
+): void {
+  if (!fs.existsSync(targetDir)) return;
+  if (!fs.existsSync(sourceDir)) return;
+
+  // 현재 source의 유효한 파일 목록
+  const validFiles = new Set(
+    fs.readdirSync(sourceDir)
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => `${prefix}${f}`),
+  );
+
+  // targetDir에서 prefix로 시작하지만 유효 목록에 없는 파일 삭제
+  for (const existing of fs.readdirSync(targetDir)) {
+    if (!existing.startsWith(prefix) || !existing.endsWith('.md')) continue;
+    if (validFiles.has(existing)) continue;
+
+    const filePath = path.join(targetDir, existing);
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      // 사용자 수정 보호: forgen-managed 마커가 있고 hash가 기록된 경우만 삭제
+      const recordedHash = hashes[existing];
+      const hasMarker = content.includes('<!-- forgen-managed -->');
+      if (!hasMarker) {
+        log.debug(`에이전트 삭제 스킵: ${existing} (forgen-managed 마커 없음)`);
+        continue;
+      }
+      if (recordedHash && contentHash(content) !== recordedHash) {
+        log.debug(`에이전트 삭제 스킵: ${existing} (사용자 수정 감지)`);
+        continue;
+      }
+      fs.unlinkSync(filePath);
+      delete hashes[existing];
+      log.debug(`stale 에이전트 삭제: ${existing}`);
+    } catch (e) {
+      log.debug(`에이전트 삭제 실패: ${existing}`, e);
+    }
+  }
+}
+
 /** 에이전트 정의 파일 설치 (패키지 내장만) */
 function installAgents(cwd: string): void {
   const pkgRoot = getPackageRoot();
@@ -301,8 +369,10 @@ function installAgents(cwd: string): void {
   fs.mkdirSync(targetDir, { recursive: true });
 
   const hashes = loadAgentHashes();
+  const sourceDir = path.join(pkgRoot, 'agents');
   try {
-    installAgentsFromDir(path.join(pkgRoot, 'agents'), targetDir, 'ch-', hashes);
+    installAgentsFromDir(sourceDir, targetDir, 'ch-', hashes);
+    cleanupStaleAgents(sourceDir, targetDir, 'ch-', hashes);
     saveAgentHashes(hashes);
   } catch (e) {
     log.debug('에이전트 설치 실패', e);
@@ -609,7 +679,16 @@ function checkCompoundStaleness(): void {
   }
 }
 
-export async function prepareHarness(cwd: string): Promise<V1HarnessContext> {
+interface PrepareHarnessOptions {
+  runtime?: RuntimeHost;
+}
+
+export async function prepareHarness(
+  cwd: string,
+  options: PrepareHarnessOptions = {},
+): Promise<V1HarnessContext> {
+  const runtime: RuntimeHost = options.runtime ?? 'claude';
+
   try {
     // 0. 스토리지 마이그레이션 (v5.1: ~/.compound/ → ~/.forgen/)
     migrateToForgen();
@@ -648,8 +727,8 @@ export async function prepareHarness(cwd: string): Promise<V1HarnessContext> {
     const inTmux = !!process.env.TMUX;
 
     // 4. Claude Code 설정 주입 (환경변수 + trust 기반 permissions)
-    const env = buildEnv(cwd, v1Result.session?.session_id);
-    injectSettings(env, v1Result);
+    const env = buildEnv(cwd, v1Result.session?.session_id, runtime);
+    injectSettings(env, v1Result, runtime, cwd);
 
     // 5. 에이전트 설치
     installAgents(cwd);
@@ -678,7 +757,7 @@ export async function prepareHarness(cwd: string): Promise<V1HarnessContext> {
     // 12. Compound staleness guard
     checkCompoundStaleness();
 
-    return { cwd, inTmux, v1: v1Result };
+    return { cwd, inTmux, v1: v1Result, runtime };
   } catch (err) {
     rollbackSettings();
     throw err;
