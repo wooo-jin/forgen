@@ -5,6 +5,38 @@ All notable changes to forgen will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-04-16
+
+### Added — Self-Evolving Harness (inspired by Stanford meta-harness)
+
+Three-phase evolution loop around the existing compound solution store:
+
+**Phase 1 — Fitness Loop (Select axis):**
+- `solution-outcomes`: per-session inject→outcome event log (accept/correct/error/unknown) with fail-open semantics; attribution through solution-injector (appendPending/flushAccept), correction-record MCP (attributeCorrection), and post-tool-failure hook (attributeError).
+- `solution-fitness`: Laplace-smoothed acceptance ratio × log(1+injected) confidence. State classification: draft / active / champion / underperform. No auto-delete — population-relative thresholds only.
+- `solution-quarantine`: malformed frontmatter no longer silently dropped — invalid files surface in `~/.forgen/state/solution-quarantine.jsonl` with actionable diagnostics; `listQuarantined` / `pruneQuarantine` helpers.
+- `solution-fixup`: schema migration for legacy defects (missing `extractedBy`, missing `evidence` block, missing `supersedes`). Applied to the live install, this recovered 5 dead solutions and one was injected on the next matching prompt.
+
+**Phase 4 — Self-Evolution (Propose + Select axes):**
+- `solution-weakness`: structured discovery report from four detectors — under-served tags (correction evidence without a matching champion), conflict clusters, dead corners (injected=0 with unique tags), volatile solutions (accept-rate shift >0.3).
+- `ch-solution-evolver` agent: Opus proposer, Bash-disabled, emits exactly 3 novel candidates into `~/.forgen/lab/candidates/` with 30%-80% tag overlap gate and self-critique novelty check.
+- Candidate cold-start bonus: solutions with `status: candidate` get confidence × 1.3 so they reach enough injections to accumulate fitness. Auto-promotes to `verified` at 5 injections; bonus disappears naturally.
+- Candidate lifecycle: `promoteCandidate` validates schema + refuses name collisions before moving files from lab to `me/solutions`. `rollbackSince` archives every `source: evolved` solution newer than a cutoff to `~/.forgen/lab/archived/rollback-{ts}/` (never deletes — always recoverable).
+
+**CLI surface:**
+- `forgen learn fix-up [--apply]` — dry-run repair of malformed solutions.
+- `forgen learn quarantine [--prune]` — show / clean dropped solutions.
+- `forgen learn fitness [--json]` — per-solution fitness table.
+- `forgen learn evolve [--save]` — weakness report + proposer hint.
+- `forgen learn evolve --promote --list` / `--promote <name>` — candidate promotion.
+- `forgen learn evolve --rollback <epoch-ms-or-ISO>` — time-bounded rollback.
+- Dashboard gains a 🎯 Solution Fitness panel (state distribution + top-3).
+
+**Dogfood evidence:** the full pipeline was exercised end-to-end — weakness report → evolver-agent proposal → schema validation → promotion → cold-start-boosted match (relevance 0.78) → injection counter increment.
+
+### Documentation
+- `docs/design-solution-evolution.md` — Phase 4 design spec with open questions, prerequisites, and rollout plan.
+
 ## [0.3.0] - 2026-04-15
 
 ### BREAKING
