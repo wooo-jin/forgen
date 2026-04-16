@@ -36,9 +36,9 @@ command -v forgen &>/dev/null && pass "forgen CLI in PATH" || fail "forgen CLI m
 COMMAND_COUNT=$(ls $FORGEN_PKG/commands/*.md 2>/dev/null | wc -l | tr -d ' ')
 [ "$COMMAND_COUNT" = "10" ] && pass "commands/ has exactly 10 skills ($COMMAND_COUNT)" || fail "commands/ has $COMMAND_COUNT (expected 10)"
 
-# 에이전트 소스 파일 수
+# 에이전트 소스 파일 수 (12 core + Phase 4 solution-evolver = 13)
 AGENT_COUNT=$(ls $FORGEN_PKG/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
-[ "$AGENT_COUNT" = "12" ] && pass "agents/ has exactly 12 agents ($AGENT_COUNT)" || fail "agents/ has $AGENT_COUNT (expected 12)"
+[ "$AGENT_COUNT" = "13" ] && pass "agents/ has exactly 13 agents ($AGENT_COUNT)" || fail "agents/ has $AGENT_COUNT (expected 13)"
 
 # 삭제되었어야 하는 파일들 확인
 for deleted in performance-reviewer.md security-reviewer.md refactoring-expert.md code-simplifier.md scientist.md qa-tester.md writer.md; do
