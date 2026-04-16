@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import { fixupSolutions } from './solution-fixup.js';
 import { listQuarantined, pruneQuarantine } from './solution-quarantine.js';
 import { computeFitness } from './solution-fitness.js';
+import { buildWeaknessReport, saveWeaknessReport, latestWeaknessReport } from './solution-weakness.js';
 
 const ME_SOLUTIONS = path.join(os.homedir(), '.forgen', 'me', 'solutions');
 
@@ -11,6 +12,7 @@ export async function handleLearn(args: string[]): Promise<void> {
   if (sub === 'fix-up') return runFixUp(args.slice(1));
   if (sub === 'quarantine') return runQuarantine(args.slice(1));
   if (sub === 'fitness') return runFitness(args.slice(1));
+  if (sub === 'evolve') return runEvolve(args.slice(1));
   printUsage();
 }
 
@@ -22,6 +24,8 @@ function printUsage(): void {
     forgen learn fix-up [--apply]         Repair malformed solution frontmatter (dry-run by default)
     forgen learn quarantine [--prune]     Show files dropped by the index; --prune removes fixed/deleted
     forgen learn fitness [--json]         Show per-solution fitness (accept/correct/error ratios)
+    forgen learn evolve [--save|--rollback <ts>|--promote <name>]
+                                          Phase 4 evolution: weakness report + candidate lifecycle
 `);
 }
 
@@ -85,4 +89,70 @@ function runFitness(args: string[]): void {
     console.log(`    ${name.padEnd(48)} ${r.state.padEnd(14)} ${String(r.injected).padStart(4)}  ${acr.padStart(11)}  ${r.fitness.toFixed(2).padStart(6)}`);
   }
   console.log('');
+}
+
+function runEvolve(args: string[]): void {
+  const save = args.includes('--save');
+  const rollbackIdx = args.indexOf('--rollback');
+  const promoteIdx = args.indexOf('--promote');
+
+  if (rollbackIdx >= 0 && args[rollbackIdx + 1]) {
+    return runEvolveRollback(args[rollbackIdx + 1]);
+  }
+  if (promoteIdx >= 0 && args[promoteIdx + 1]) {
+    return runEvolvePromote(args[promoteIdx + 1]);
+  }
+
+  // Default: generate + optionally save weakness report, print proposer
+  // brief so the user can hand it to the ch-solution-evolver agent.
+  const report = buildWeaknessReport();
+  console.log(`\n  Weakness Report @ ${report.generated_at}\n`);
+  console.log(`  Population: ${report.population.total} solutions`);
+  console.log(`    champion=${report.population.champion}  active=${report.population.active}  underperform=${report.population.underperform}  draft=${report.population.draft}\n`);
+  renderTagRow('Under-served tags', report.under_served_tags.map((t) => `${t.tag} (×${t.correction_mentions})`));
+  renderTagRow('Conflict clusters', report.conflict_clusters.map((c) => `${c.shared_tags.slice(0, 2).join('+')}: ${c.champion.name} vs ${c.underperform.name}`));
+  renderTagRow('Dead corners', report.dead_corners.map((d) => `${d.solution}: [${d.unique_tags.slice(0, 2).join(',')}]`));
+  renderTagRow('Volatile', report.volatile.map((v) => `${v.solution} Δ${v.delta}`));
+
+  if (save) {
+    const p = saveWeaknessReport(report);
+    console.log(`\n  Saved: ${p}`);
+    console.log(`  Next: invoke the ch-solution-evolver agent with this report, then run:`);
+    console.log(`    forgen learn evolve --promote <candidate-name>   # accept one of the 3 proposals`);
+    console.log(`    forgen learn evolve --rollback ${Date.now()}      # undo this week's candidates`);
+    console.log('');
+  } else {
+    console.log(`\n  Dry-run. Re-run with --save to persist this report and proceed to proposer.\n`);
+  }
+}
+
+function renderTagRow(label: string, items: string[]): void {
+  if (items.length === 0) {
+    console.log(`  ${label}: (none)`);
+    return;
+  }
+  console.log(`  ${label}:`);
+  for (const item of items.slice(0, 5)) console.log(`    - ${item}`);
+}
+
+function runEvolveRollback(ts: string): void {
+  const report = latestWeaknessReport();
+  if (!report) {
+    console.log(`\n  No weakness report found. Nothing to roll back.\n`);
+    return;
+  }
+  console.log(`\n  Rollback (ts=${ts}):`);
+  console.log(`    This command is a placeholder: candidate lifecycle writes go through`);
+  console.log(`    --promote, so rolling back means deleting files created after ${ts}.`);
+  console.log(`    Manual: ls -t ~/.forgen/me/solutions/evolved-*.md | xargs rm`);
+  console.log(`    Automatic rollback ships with Phase 4.5. See docs/design-solution-evolution.md\n`);
+}
+
+function runEvolvePromote(candidateName: string): void {
+  console.log(`\n  Promotion intent for '${candidateName}':`);
+  console.log(`    This flow expects the ch-solution-evolver agent to have written`);
+  console.log(`    a candidate file at ~/.forgen/me/solutions/${candidateName}.md`);
+  console.log(`    with status: candidate. The cold-start bonus is already wired —`);
+  console.log(`    no further action is required beyond verifying the file exists.\n`);
+  console.log(`    Automatic candidate-file emit ships with Phase 4.5. See design doc.\n`);
 }
