@@ -163,8 +163,22 @@ export function mutateSolutionByName(
 }
 
 /**
+ * Phase 4 candidate promotion threshold: a `status: candidate` solution
+ * automatically graduates to `status: verified` once its injected count
+ * crosses this cutoff. At that point the cold-start exploration bonus
+ * (solution-matcher.ts) disappears naturally, since the bonus keys off
+ * `candidate` status.
+ */
+const CANDIDATE_PROMOTION_INJECTIONS = 5;
+
+/**
  * Evidence 카운터 단일 증가 helper.
  * mutateSolutionByName + 카운터 증가 패턴을 한 줄로.
+ *
+ * Also graduates Phase 4 candidates: when a `status: candidate` solution's
+ * injected count reaches `CANDIDATE_PROMOTION_INJECTIONS`, its status flips
+ * to `verified` in the same write. This keeps the exploration bonus from
+ * clinging to a solution that has had enough trials.
  */
 export function incrementEvidence(
   solutionName: string,
@@ -174,6 +188,13 @@ export function incrementEvidence(
     const ev = sol.frontmatter.evidence as unknown as Record<string, number>;
     if (!(field in ev)) return false;
     ev[field] = (ev[field] ?? 0) + 1;
+    if (
+      field === 'injected' &&
+      sol.frontmatter.status === 'candidate' &&
+      ev.injected >= CANDIDATE_PROMOTION_INJECTIONS
+    ) {
+      sol.frontmatter.status = 'verified';
+    }
     return true;
   });
 }

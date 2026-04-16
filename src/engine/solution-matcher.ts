@@ -1059,6 +1059,30 @@ function loadTunedMatcherWeights(): { tfidf: number; bm25: number; bigram: numbe
   return undefined;
 }
 
+/**
+ * Cold-start exploration bonus for candidate solutions.
+ *
+ * Phase 4 evolution: newly proposed solutions enter at `status: candidate`.
+ * Without a nudge they compete head-to-head with mature verified/champion
+ * entries and almost always lose the first few rounds — not because
+ * they're worse, but because matchers favor solutions with richer tag
+ * histories. A small confidence multiplier lets candidates surface often
+ * enough to accumulate outcome data, after which the fitness loop
+ * decides their fate.
+ *
+ * The 1.3× factor is a starting point (Q1 in docs/design-solution-evolution.md).
+ * Automatic deactivation after 5 accumulated injections is handled by a
+ * separate promoter that flips `status` to `verified`.
+ */
+const CANDIDATE_EXPLORATION_MULTIPLIER = 1.3;
+
+function applyCandidateExplorationBonus(entries: LoadedSolution[]): LoadedSolution[] {
+  return entries.map((e) => {
+    if (e.status !== 'candidate') return e;
+    return { ...e, confidence: Math.min(1, e.confidence * CANDIDATE_EXPLORATION_MULTIPLIER) };
+  });
+}
+
 export function matchSolutions(prompt: string, scope: ScopeInfo, cwd: string): SolutionMatch[] {
   // Build solution dirs for index cache
   const dirs: SolutionDirConfig[] = [{ dir: ME_SOLUTIONS, scope: 'me' }];
@@ -1069,7 +1093,9 @@ export function matchSolutions(prompt: string, scope: ScopeInfo, cwd: string): S
 
   // Use cached index (rebuilt only when dirs change)
   const index = getOrBuildIndex(dirs);
-  const allSolutions: LoadedSolution[] = index.entries.map((e) => ({ ...e }));
+  const allSolutions: LoadedSolution[] = applyCandidateExplorationBonus(
+    index.entries.map((e) => ({ ...e })),
+  );
 
   const promptTags = extractTags(prompt);
   const promptLower = prompt.toLowerCase();
