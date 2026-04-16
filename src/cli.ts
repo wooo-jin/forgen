@@ -92,6 +92,14 @@ const commands: Command[] = [
     },
   },
   {
+    name: 'learn',
+    description: 'Solution maintenance: fix-up | quarantine | fitness',
+    handler: async (args) => {
+      const { handleLearn } = await import('./engine/learn-cli.js');
+      await handleLearn(args);
+    },
+  },
+  {
     name: 'me',
     description: 'Personal dashboard (→ inspect profile)',
     handler: async (_args) => {

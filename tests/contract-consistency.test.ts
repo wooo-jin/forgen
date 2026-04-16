@@ -30,7 +30,12 @@ describe('contract consistency', () => {
     const cliCommands = extractCliCommands();
     const slashSkills = extractSlashSkills();
     const overlap = cliCommands.filter((name) => slashSkills.includes(name));
-    expect(overlap).toEqual(['compound']);
+    // `compound`: CLI previews / --save commits; skill triggers session
+    // pattern extraction. Both in the "accumulate knowledge" family.
+    // `learn`: CLI does solution-index maintenance (fix-up / quarantine /
+    // fitness); skill manages compound knowledge (search / stats / prune /
+    // export / import). Both in the "manage learned knowledge" family.
+    expect(overlap).toEqual(['compound', 'learn']);
   });
 
   it('compound skill documents that CLI behavior is preview-first', () => {

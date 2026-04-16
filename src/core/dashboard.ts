@@ -573,6 +573,53 @@ function renderLearningCurve(data: LearningCurve): string {
   ].join('\n');
 }
 
+function renderFitnessSummary(): string {
+  // Lazy import: keep dashboard startup cheap if outcomes are absent.
+  let summary: { total: number; champion: number; active: number; underperform: number; draft: number; top: Array<{ name: string; fitness: number; state: string }> };
+  try {
+    const { computeFitness } = require('../engine/solution-fitness.js') as typeof import('../engine/solution-fitness.js');
+    const records = computeFitness();
+    summary = {
+      total: records.length,
+      champion: records.filter((r) => r.state === 'champion').length,
+      active: records.filter((r) => r.state === 'active').length,
+      underperform: records.filter((r) => r.state === 'underperform').length,
+      draft: records.filter((r) => r.state === 'draft').length,
+      top: records.slice(0, 3).map((r) => ({ name: r.solution, fitness: r.fitness, state: r.state })),
+    };
+  } catch {
+    summary = { total: 0, champion: 0, active: 0, underperform: 0, draft: 0, top: [] };
+  }
+
+  if (summary.total === 0) {
+    return [
+      `  ${bold('🎯 Solution Fitness / 솔루션 적합도')}`,
+      ``,
+      `    ${dim('아직 outcome 이벤트 데이터 없음.')}`,
+      `    ${dim('솔루션 주입이 누적되면 자동으로 채워집니다.')}`,
+    ].join('\n');
+  }
+
+  const topLines = summary.top.length > 0
+    ? summary.top.map((t) => {
+        const icon = t.state === 'champion' ? green('●') : t.state === 'underperform' ? red('●') : cyan('●');
+        return `    ${icon} ${t.name.slice(0, 44).padEnd(44)} ${t.fitness.toFixed(2)} (${t.state})`;
+      }).join('\n')
+    : `    ${dim('(top 3 없음)')}`;
+
+  return [
+    `  ${bold('🎯 Solution Fitness / 솔루션 적합도')}`,
+    ``,
+    `  상태 분포 (총 ${summary.total}개):`,
+    `    ${green('champion')}: ${summary.champion}   ${cyan('active')}: ${summary.active}   ${red('underperform')}: ${summary.underperform}   ${dim('draft')}: ${summary.draft}`,
+    ``,
+    `  Top 3 by fitness:`,
+    topLines,
+    ``,
+    `  ${dim('상세: forgen learn fitness')}`,
+  ].join('\n');
+}
+
 export function renderDashboard(): string {
   const knowledge = collectKnowledgeOverview();
   const injection = collectInjectionActivity();
@@ -591,6 +638,8 @@ export function renderDashboard(): string {
     `  ${BOLD}${CYAN}╚══════════════════════════════════════════════╝${RESET}`,
     '',
     renderLearningCurve(learning),
+    divider,
+    renderFitnessSummary(),
     divider,
     renderKnowledgeOverview(knowledge),
     divider,
