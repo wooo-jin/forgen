@@ -128,6 +128,13 @@ async function main(): Promise<void> {
   // 컨텍스트 신호 업데이트
   incrementFailureSignal(sessionId);
 
+  // Outcome tracking (Phase 1): attribute this tool failure to pending
+  // solution injections in the same session. Fail-open.
+  try {
+    const { attributeError } = await import('../engine/solution-outcomes.js');
+    attributeError(sessionId);
+  } catch { /* ignore */ }
+
   const failCount = state.failures[toolName].count;
   const suggestion = getRecoverySuggestion(error, toolName);
 

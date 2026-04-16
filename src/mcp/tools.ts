@@ -337,6 +337,14 @@ export function registerTools(server: McpServer): void {
           axis_hint: axis_hint as 'quality_safety' | 'autonomy' | 'judgment_philosophy' | 'communication_style' | null,
         });
 
+        // Outcome tracking (Phase 1): attribute this correction to any
+        // pending injections in the session. Fail-open — attribution is a
+        // best-effort signal, never block the correction record itself.
+        try {
+          const { attributeCorrection } = await import('../engine/solution-outcomes.js');
+          attributeCorrection(effectiveSessionId);
+        } catch { /* ignore */ }
+
         const lines = [
           `Evidence recorded: ${result.evidence_event_id}`,
         ];

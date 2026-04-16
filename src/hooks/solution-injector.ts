@@ -30,6 +30,7 @@ import { writeSignal } from './shared/plugin-signal.js';
 import { approve, approveWithContext, failOpenWithTracking } from './shared/hook-response.js';
 import { STATE_DIR } from '../core/paths.js';
 import { recordHookTiming } from './shared/hook-timing.js';
+import { appendPending, flushAccept } from '../engine/solution-outcomes.js';
 
 interface HookInput {
   prompt: string;
@@ -483,6 +484,18 @@ async function main(): Promise<void> {
 
   // 플러그인 시그널 기록 (다른 플러그인이 참고할 수 있도록)
   try { writeSignal(sessionId, 'UserPromptSubmit', fullInjection.length); } catch (e) { log.debug('plugin signal 기록 실패', e); }
+
+  // Outcome tracking (Phase 1): flush previous pending as `accept` (silence
+  // = consent), then record this round's injections as new pending. Both
+  // calls are fail-open — a tracking crash must not block injection.
+  try { flushAccept(sessionId); } catch (e) { log.debug('outcome flushAccept 실패', e); }
+  try {
+    appendPending(sessionId, effectiveToInject.map((sol) => ({
+      solution: sol.name,
+      match_score: sol.relevance,
+      injected_chars: (summaries.get(sol.name) ?? sol.name).length,
+    })));
+  } catch (e) { log.debug('outcome appendPending 실패', e); }
 
   console.log(approveWithContext(fullInjection, 'UserPromptSubmit'));
   } finally {
