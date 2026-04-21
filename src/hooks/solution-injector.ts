@@ -38,6 +38,19 @@ interface HookInput {
 }
 const MAX_SOLUTIONS_PER_SESSION = 10;
 
+/**
+ * Minimum relevance required for a solution to be injected (2026-04-21).
+ *
+ * Matches below this threshold produced ~80% of all noisy error-outcome
+ * events in the field audit — low-confidence injections get blanket error
+ * attribution from unrelated tool failures, distorting fitness and feeding
+ * the Phase 4 evolver garbage signal. This gate aligns with
+ * MIN_ERROR_MATCH_SCORE in solution-outcomes.ts so the injection and
+ * attribution invariants match: if we inject it, we are willing to let it
+ * take error blame; if it is below this, we skip both.
+ */
+export const MIN_INJECT_RELEVANCE = 0.3;
+
 /** 세션별 이미 주입된 솔루션 추적 (중복 방지) */
 function getSessionCachePath(sessionId: string): string {
   return path.join(STATE_DIR, `solution-cache-${sanitizeId(sessionId)}.json`);
@@ -336,11 +349,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  // 어댑티브 프롬프트당 솔루션 수 제한, experiment는 1개 제한
+  // 어댑티브 프롬프트당 솔루션 수 제한, experiment는 1개 제한.
+  // 2026-04-21: MIN_INJECT_RELEVANCE 게이트 추가. 과거 0.15~0.21짜리 저신뢰 매칭이
+  // 거의 모든 세션에 주입되어 error 귀속의 80%를 차지했음.
   let experimentCount = 0;
   const toInject: typeof matches = [];
   for (const sol of matches) {
     if (injected.has(sol.name)) continue;
+    if (sol.relevance < MIN_INJECT_RELEVANCE) continue;
     if (sol.status === 'experiment') {
       if (experimentCount >= 1) continue;
       experimentCount++;

@@ -169,10 +169,10 @@ const commands: Command[] = [
   },
   {
     name: 'doctor',
-    description: 'Diagnostics',
-    handler: async (_args) => {
+    description: 'Diagnostics (--prune-state to GC stale session files)',
+    handler: async (args) => {
       const { runDoctor } = await import('./core/doctor.js');
-      await runDoctor();
+      await runDoctor({ pruneState: args.includes('--prune-state') });
     },
   },
   // install --plugin 제거됨 — postinstall이 유일한 설치 경로

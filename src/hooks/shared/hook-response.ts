@@ -15,8 +15,8 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
+import { STATE_DIR } from '../../core/paths.js';
 
 /** 통과 응답 (컨텍스트 없음, 모든 이벤트 공통) */
 export function approve(): string {
@@ -74,9 +74,8 @@ export function ask(reason: string): string {
  */
 export function failOpenWithTracking(hookName: string): string {
   try {
-    const stateDir = path.join(os.homedir(), '.forgen', 'state');
-    fs.mkdirSync(stateDir, { recursive: true });
-    const logPath = path.join(stateDir, 'hook-errors.jsonl');
+    fs.mkdirSync(STATE_DIR, { recursive: true });
+    const logPath = path.join(STATE_DIR, 'hook-errors.jsonl');
     const entry = JSON.stringify({ hook: hookName, at: Date.now() });
     fs.appendFileSync(logPath, entry + '\n');
   } catch { /* fail-open: tracking itself must not throw */ }

@@ -272,3 +272,85 @@ describe('readMatchEvalLog', () => {
     expect(readMatchEvalLog()).toEqual([]);
   });
 });
+
+describe('logMatchDecision rotation (2026-04-21)', () => {
+  beforeEach(() => {
+    fs.rmSync(TEST_HOME, { recursive: true, force: true });
+    delete process.env[MATCH_EVAL_LOG_ENV];
+    delete process.env[MATCH_EVAL_LOG_SAMPLE_ENV];
+  });
+
+  afterEach(() => {
+    fs.rmSync(TEST_HOME, { recursive: true, force: true });
+    delete process.env[MATCH_EVAL_LOG_ENV];
+    delete process.env[MATCH_EVAL_LOG_SAMPLE_ENV];
+  });
+
+  it('파일이 10 MB 임계를 넘으면 .jsonl.1로 회전하고 새 파일에 기록', () => {
+    // Seed the log at ≥10MB so the next write rotates.
+    fs.mkdirSync(path.dirname(MATCH_EVAL_LOG_PATH), { recursive: true });
+    const bulk = 'x'.repeat(11 * 1024 * 1024);
+    fs.writeFileSync(MATCH_EVAL_LOG_PATH, bulk);
+    const originalSize = fs.statSync(MATCH_EVAL_LOG_PATH).size;
+    expect(originalSize).toBeGreaterThanOrEqual(10 * 1024 * 1024);
+
+    logMatchDecision({
+      source: 'hook',
+      rawQuery: 'trigger rotation',
+      normalizedQuery: ['trigger'],
+      candidates: [],
+      rankedTopN: [],
+    });
+
+    // .jsonl.1 should now hold the previous content (size ≥ 10MB),
+    // and .jsonl should be a fresh file with the single new record.
+    const rotatedPath = `${MATCH_EVAL_LOG_PATH}.1`;
+    expect(fs.existsSync(rotatedPath)).toBe(true);
+    expect(fs.statSync(rotatedPath).size).toBe(originalSize);
+
+    const freshLines = fs.readFileSync(MATCH_EVAL_LOG_PATH, 'utf-8').trim().split('\n');
+    expect(freshLines).toHaveLength(1);
+    const rec = JSON.parse(freshLines[0]) as MatchEvalLogRecord;
+    expect(rec.rawQueryHash).toBe(expectedHash('trigger rotation'));
+  });
+
+  it('파일이 10 MB 미만이면 회전하지 않는다', () => {
+    logMatchDecision({
+      source: 'hook',
+      rawQuery: 'no-rotate',
+      normalizedQuery: ['no'],
+      candidates: [],
+      rankedTopN: [],
+    });
+    logMatchDecision({
+      source: 'hook',
+      rawQuery: 'no-rotate-2',
+      normalizedQuery: ['no'],
+      candidates: [],
+      rankedTopN: [],
+    });
+    expect(fs.existsSync(`${MATCH_EVAL_LOG_PATH}.1`)).toBe(false);
+    expect(readMatchEvalLog()).toHaveLength(2);
+  });
+
+  it('이전 회전본(.jsonl.1)이 있어도 다음 회전은 덮어쓴다 (1세대 유지)', () => {
+    fs.mkdirSync(path.dirname(MATCH_EVAL_LOG_PATH), { recursive: true });
+    // Pre-existing .jsonl.1 sentinel
+    fs.writeFileSync(`${MATCH_EVAL_LOG_PATH}.1`, 'OLD_GENERATION');
+    // Current log over threshold
+    fs.writeFileSync(MATCH_EVAL_LOG_PATH, 'y'.repeat(11 * 1024 * 1024));
+
+    logMatchDecision({
+      source: 'hook',
+      rawQuery: 'overwrite rotation',
+      normalizedQuery: [],
+      candidates: [],
+      rankedTopN: [],
+    });
+
+    // .jsonl.1 is clobbered (no longer "OLD_GENERATION")
+    const rotated = fs.readFileSync(`${MATCH_EVAL_LOG_PATH}.1`, 'utf-8');
+    expect(rotated).not.toContain('OLD_GENERATION');
+    expect(rotated.length).toBeGreaterThanOrEqual(10 * 1024 * 1024);
+  });
+});

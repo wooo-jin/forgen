@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { FORGEN_HOME, LAB_DIR, ME_BEHAVIOR, ME_DIR, ME_PHILOSOPHY, ME_SOLUTIONS, ME_RULES, ME_SKILLS, PACKS_DIR, SESSIONS_DIR, STATE_DIR } from './paths.js';
 import { getTimingStats } from '../hooks/shared/hook-timing.js';
+import { countSessionScopedFiles, pruneState } from './state-gc.js';
 
 /** ~/.claude/projects/ — Claude Code 세션 저장 경로 */
 const CLAUDE_PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
@@ -28,7 +29,13 @@ function commandExists(cmd: string): boolean {
   }
 }
 
-export async function runDoctor(): Promise<void> {
+export interface DoctorOptions {
+  /** When true, delete stale session-scoped state files instead of just
+   *  reporting bloat. Triggered by `forgen doctor --prune-state`. */
+  pruneState?: boolean;
+}
+
+export async function runDoctor(opts: DoctorOptions = {}): Promise<void> {
   console.log('\n  Forgen — Diagnostics\n');
 
   console.log('  [Tools]');
@@ -307,6 +314,24 @@ export async function runDoctor(): Promise<void> {
     }
     console.log();
   }
+
+  // State bloat check — session-scoped files accumulate until pruned.
+  console.log('  [State Hygiene]');
+  const sessionFiles = countSessionScopedFiles();
+  if (sessionFiles === 0) {
+    console.log('  ✓ no session-scoped state files');
+  } else if (sessionFiles < 500) {
+    console.log(`  ✓ ${sessionFiles} session-scoped files (under threshold)`);
+  } else {
+    console.log(`  ⚠ ${sessionFiles} session-scoped files (bloat threshold 500)`);
+    console.log('    Run: forgen doctor --prune-state   (removes files older than 7 days)');
+  }
+  if (opts.pruneState) {
+    const report = pruneState({ dryRun: false });
+    const mb = (report.bytesFreed / 1024 / 1024).toFixed(2);
+    console.log(`  → Pruned ${report.pruned}/${report.scanned} files (${mb} MB freed, >${report.retentionDays}d old)`);
+  }
+  console.log();
 
   // 현재 디렉토리 git 정보
   console.log('  [Git]');

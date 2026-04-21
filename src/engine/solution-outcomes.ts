@@ -172,10 +172,34 @@ export function attributeCorrection(sessionId: string): string[] {
 }
 
 /**
+ * Attribution gates for error events (2026-04-21 fix):
+ *   - MIN_ERROR_MATCH_SCORE: solutions injected on thin relevance (< 0.3)
+ *     are unlikely to have caused unrelated tool failures. Attributing
+ *     error to them distorts fitness and poisons the Phase 4 evolver.
+ *   - MAX_ATTRIBUTION_LAG_MS: errors more than 5 minutes after injection
+ *     are too temporally distant — the user has likely moved on to work
+ *     the solution has no bearing on.
+ *   - MAX_ATTRIBUTED_PER_ERROR: cap at the top 3 most-relevant pending
+ *     solutions so a broad inject batch doesn't scatter false blame.
+ *
+ * Data audit (2026-04-21, ~/.forgen/state/outcomes/ 260 sessions):
+ *   Top-3 "error" solutions = 80% of all error events, injected at score
+ *   0.15/0.21 nearly every session. Without these gates, fitness
+ *   classification drags good-but-low-score solutions into underperform.
+ */
+const MIN_ERROR_MATCH_SCORE = 0.3;
+const MAX_ATTRIBUTION_LAG_MS = 5 * 60 * 1000;
+const MAX_ATTRIBUTED_PER_ERROR = 3;
+
+/**
  * Attribute a tool error to pending solutions in this session. Called from
  * post-tool-failure hook. Unlike corrections, errors do not clear pending
  * — an error is a weaker signal and the next user prompt can still produce
  * a correct/accept decision.
+ *
+ * Only the top-K most-relevant, recent, above-threshold pending solutions
+ * are attributed (see gates above). Below-threshold or stale pending
+ * entries are left untouched — they will resolve via accept/unknown later.
  *
  * To avoid flooding the log with duplicate errors for the same pending
  * batch, we cap at one `error` event per (session, solution) pair per
@@ -190,9 +214,16 @@ export function attributeError(sessionId: string): string[] {
     const existing = (state as unknown as Record<string, unknown>)[flaggedKey];
     const flagged = new Set<string>(Array.isArray(existing) ? (existing as string[]) : []);
     const now = Date.now();
+
+    const eligible = state.pending
+      .filter((p) => !flagged.has(p.solution))
+      .filter((p) => p.match_score >= MIN_ERROR_MATCH_SCORE)
+      .filter((p) => now - p.ts <= MAX_ATTRIBUTION_LAG_MS)
+      .sort((a, b) => b.match_score - a.match_score)
+      .slice(0, MAX_ATTRIBUTED_PER_ERROR);
+
     const flaggedThisCall: string[] = [];
-    for (const p of state.pending) {
-      if (flagged.has(p.solution)) continue;
+    for (const p of eligible) {
       appendOutcome({
         ts: now,
         session_id: sessionId,

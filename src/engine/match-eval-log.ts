@@ -79,6 +79,45 @@ const MAX_MATCHED_TERMS_PER_CANDIDATE = 16;
 const MAX_LOG_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
 
 /**
+ * Write-side rotation threshold (2026-04-21). When the active log reaches
+ * this size, it is renamed to `<path>.1` (clobbering any previous rotation)
+ * and a fresh empty file is opened. Keeps one generation of history for
+ * offline forensics without letting the log grow unbounded. Chosen so
+ * typical installs retain ~10-20k records — enough to spot recurrent
+ * matcher surprises, not enough to silently fill disk.
+ */
+const ROTATION_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+/**
+ * Internal: rotate the log if it exceeds ROTATION_SIZE_BYTES. Called from
+ * inside the file lock so no concurrent writer observes a torn state. A
+ * rotation failure is swallowed — the caller will still attempt to append
+ * and either succeed (no-op rotation) or the append itself will surface
+ * the underlying fs error via the outer catch.
+ */
+function maybeRotate(logPath: string): void {
+  let size = 0;
+  try {
+    const st = fs.statSync(logPath);
+    if (!st.isFile()) return;
+    size = st.size;
+  } catch {
+    return; // missing file is fine, append will create it
+  }
+  if (size < ROTATION_SIZE_BYTES) return;
+  const rotated = `${logPath}.1`;
+  try {
+    // rename is atomic on POSIX within the same directory; overwrites any
+    // previous rotation. We intentionally keep only one generation.
+    fs.renameSync(logPath, rotated);
+  } catch {
+    // Best effort. If rotation fails (permissions, cross-device link)
+    // we leave the original file alone and the next append just continues
+    // growing. The 50 MB read-side cap still protects offline tools.
+  }
+}
+
+/**
  * Single ranking decision captured at matcher call time.
  *
  * Rationale for each field:
@@ -226,6 +265,11 @@ export function logMatchDecision(input: MatchEvalLogInput): void {
     // so concurrent writers could interleave without this lock. The lock
     // is taken on the log file itself, and cleaned up by withFileLockSync.
     withFileLockSync(MATCH_EVAL_LOG_PATH, () => {
+      // Rotate BEFORE opening the fd so the new fd points at the fresh
+      // file. Doing this after open would append to the file that is
+      // about to be renamed into the previous-generation slot.
+      maybeRotate(MATCH_EVAL_LOG_PATH);
+
       // O_NOFOLLOW: refuse to follow a symlink at the target path. This
       // blocks a local-attacker symlink swap attack where the log file
       // is replaced with a link to e.g. ~/.ssh/authorized_keys.
