@@ -37,6 +37,7 @@ import {
 } from './solution-format.js';
 import { ME_SOLUTIONS, ME_RULES } from '../core/paths.js';
 import { createLogger } from '../core/logger.js';
+import { getOrBuildIndex, type SolutionDirConfig } from './solution-index.js';
 
 const log = createLogger('solution-writer');
 
@@ -122,7 +123,38 @@ export function mutateSolutionByName(
   mutator: SolutionMutator,
   options?: { extraDirs?: string[] },
 ): boolean {
-  const dirs = [ME_SOLUTIONS, ME_RULES, ...(options?.extraDirs ?? [])];
+  const extraDirs = options?.extraDirs ?? [];
+  const dirs = [ME_SOLUTIONS, ME_RULES, ...extraDirs];
+
+  // P0-3 fast path (2026-04-20): solution-index의 캐시에서 name→filePath를
+  // O(1) 조회. 과거에는 매 호출마다 dir readdir + N번 readFileSync + YAML parse
+  // (N=500일 때 hook당 최대 1500회 I/O)로 5초 timeout을 위협했다.
+  // 인덱스 miss/stale 시 아래 기존 O(N) 스캔 경로로 fallback한다.
+  try {
+    const indexDirs: SolutionDirConfig[] = [
+      { dir: ME_SOLUTIONS, scope: 'me' },
+      { dir: ME_RULES, scope: 'me' },
+      ...extraDirs.map((d): SolutionDirConfig => ({ dir: d, scope: 'project' })),
+    ];
+    const idx = getOrBuildIndex(indexDirs);
+    const entry = idx.entries.find(e => e.name === name);
+    if (entry?.filePath && fs.existsSync(entry.filePath)) {
+      let isSymlink = true;
+      try {
+        isSymlink = fs.lstatSync(entry.filePath).isSymbolicLink();
+      } catch { /* fall through to full scan */ }
+      if (!isSymlink) {
+        const result = mutateSolutionFile(entry.filePath, sol => {
+          if (sol.frontmatter.name !== name) return false;
+          return mutator(sol);
+        });
+        if (result) return true;
+        // 인덱스가 stale(이름이 바뀌었거나 파일이 재생성됨)이면 fallback 경로로.
+      }
+    }
+  } catch { /* 인덱스 빌드 실패 — fallback */ }
+
+  // Fallback: 전체 디렉터리 스캔 (인덱스 miss / stale 시)
   for (const dir of dirs) {
     if (!fs.existsSync(dir)) continue;
     let files: string[];
@@ -163,22 +195,16 @@ export function mutateSolutionByName(
 }
 
 /**
- * Phase 4 candidate promotion threshold: a `status: candidate` solution
- * automatically graduates to `status: verified` once its injected count
- * crosses this cutoff. At that point the cold-start exploration bonus
- * (solution-matcher.ts) disappears naturally, since the bonus keys off
- * `candidate` status.
- */
-const CANDIDATE_PROMOTION_INJECTIONS = 5;
-
-/**
  * Evidence 카운터 단일 증가 helper.
- * mutateSolutionByName + 카운터 증가 패턴을 한 줄로.
  *
- * Also graduates Phase 4 candidates: when a `status: candidate` solution's
- * injected count reaches `CANDIDATE_PROMOTION_INJECTIONS`, its status flips
- * to `verified` in the same write. This keeps the exploration bonus from
- * clinging to a solution that has had enough trials.
+ * Invariant: status/confidence 같은 lifecycle 필드는 건드리지 않는다.
+ * 모든 status 전이는 compound-lifecycle.ts::runLifecycleCheck(자동, reflected
+ * /sessions/reExtracted + age-gate 기반)과 verifySolution(수동 명령)이라는
+ * 단일 경로로만 일어난다. dual-path 금지.
+ *
+ * 과거에는 inject≥5 자동 verified 승급이 이 함수 안에 있었는데, 그것은 outcome
+ * 증거 없이도 candidate를 승급시켜 self-rewarding 편향을 만들었다. 2026-04-20
+ * 제거 (feedback_core_loop_invariant 참고).
  */
 export function incrementEvidence(
   solutionName: string,
@@ -188,13 +214,6 @@ export function incrementEvidence(
     const ev = sol.frontmatter.evidence as unknown as Record<string, number>;
     if (!(field in ev)) return false;
     ev[field] = (ev[field] ?? 0) + 1;
-    if (
-      field === 'injected' &&
-      sol.frontmatter.status === 'candidate' &&
-      ev.injected >= CANDIDATE_PROMOTION_INJECTIONS
-    ) {
-      sol.frontmatter.status = 'verified';
-    }
     return true;
   });
 }

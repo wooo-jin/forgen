@@ -93,20 +93,22 @@ describe('hook-config', () => {
       expect(fn('notepad-injector')).toBe(true);
     });
 
-    it('hooks 섹션에서 enabled: false면 false 반환', async () => {
+    it('hooks 섹션에서 enabled: false면 false 반환 (non-protected hook)', async () => {
+      // secret-filter는 safety tier, compoundCritical=false → disable 가능
+      // (notepad-injector는 compound-core tier라 guardrail에 의해 보호됨)
       mockConfigFiles({
-        global: { hooks: { 'notepad-injector': { enabled: false } } },
+        global: { hooks: { 'secret-filter': { enabled: false } } },
       });
       const { isHookEnabled: fn } = await import('../src/hooks/hook-config.js');
-      expect(fn('notepad-injector')).toBe(false);
+      expect(fn('secret-filter')).toBe(false);
     });
 
-    it('레거시 형식 (최상위 hookName.enabled: false)이면 false 반환', async () => {
+    it('레거시 형식 (최상위 hookName.enabled: false)이면 false 반환 (non-protected)', async () => {
       mockConfigFiles({
-        global: { 'notepad-injector': { enabled: false } },
+        global: { 'secret-filter': { enabled: false } },
       });
       const { isHookEnabled: fn } = await import('../src/hooks/hook-config.js');
-      expect(fn('notepad-injector')).toBe(false);
+      expect(fn('secret-filter')).toBe(false);
     });
 
     it('티어가 disabled이면 해당 티어 훅은 false 반환', async () => {
@@ -290,21 +292,23 @@ describe('hook-config', () => {
     });
 
     it('프로젝트 설정이 없으면 글로벌만 사용 (하위호환)', async () => {
+      // non-protected hook(secret-filter)로 검증 — compound-core는 guardrail에 의해
+      // 항상 true이므로 이 테스트의 "글로벌 상속 효과"를 보여주지 못함.
       mockConfigFiles({
-        global: { hooks: { 'notepad-injector': { enabled: false } } },
+        global: { hooks: { 'secret-filter': { enabled: false } } },
         project: null,
       });
       const { isHookEnabled: fn } = await import('../src/hooks/hook-config.js');
-      expect(fn('notepad-injector')).toBe(false);
+      expect(fn('secret-filter')).toBe(false);
     });
 
     it('글로벌 설정 없이 프로젝트 설정만 있어도 동작', async () => {
       mockConfigFiles({
         global: null,
-        project: { hooks: { 'notepad-injector': { enabled: false } } },
+        project: { hooks: { 'secret-filter': { enabled: false } } },
       });
       const { isHookEnabled: fn } = await import('../src/hooks/hook-config.js');
-      expect(fn('notepad-injector')).toBe(false);
+      expect(fn('secret-filter')).toBe(false);
     });
 
     it('프로젝트에 언급 없는 훅은 글로벌 설정 상속 (isHookEnabled)', async () => {

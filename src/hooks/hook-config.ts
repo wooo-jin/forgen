@@ -42,6 +42,23 @@ const HOOK_TIER_MAP: Record<string, 'compound-core' | 'safety' | 'workflow'> =
   Object.fromEntries(HOOK_REGISTRY.map(h => [h.name, h.tier]));
 
 /**
+ * compound-core 티어이거나 compoundCritical=true로 선언된 훅은 project/글로벌
+ * config의 어떤 경로로도 비활성화할 수 없다. 복리화 피드백 루프(승급·outcome
+ * 추적·세션 복구)를 project-level 설정 실수로 조용히 끄는 것을 차단한다.
+ * (feedback_core_loop_invariant — 2026-04-20)
+ */
+const PROTECTED_HOOKS: ReadonlySet<string> = new Set(
+  HOOK_REGISTRY
+    .filter(h => h.tier === 'compound-core' || h.compoundCritical === true)
+    .map(h => h.name),
+);
+
+/** 테스트/진단용: 보호된 훅 이름 집합 스냅샷. */
+export function getProtectedHookNames(): string[] {
+  return [...PROTECTED_HOOKS].sort();
+}
+
+/**
  * 프로젝트의 작업 디렉토리를 결정합니다.
  * FORGEN_CWD → COMPOUND_CWD → process.cwd() 순서.
  */
@@ -137,13 +154,22 @@ export function loadHookConfig(hookName: string): Record<string, unknown> | null
 /**
  * 훅이 활성화되어 있는지 확인합니다.
  *
+ * Invariant: compound-core 티어 및 compoundCritical=true 훅은 어떤 config
+ * 경로(개별 hooks / tier / 레거시)로도 비활성화되지 않는다. config 값과 무관하게
+ * 항상 true를 반환한다. 이는 복리화 3축(승급/rollback/피드백)을 project-level
+ * config 실수로 조용히 끄는 dual-path를 차단하는 단일 진입점 가드다.
+ *
  * 우선순위:
+ *   0. PROTECTED_HOOKS에 속하면 → 즉시 true (가드레일)
  *   1. hooks.hookName.enabled (개별 훅 설정)
- *   2. tiers.tierName.enabled (티어 설정) — compound-core는 티어 비활성화 무시
+ *   2. tiers.tierName.enabled (티어 설정)
  *   3. hookName.enabled (레거시 형식)
  *   4. 기본값 true (하위호환)
  */
 export function isHookEnabled(hookName: string): boolean {
+  // 0) compound-core 가드레일 — config 어떤 경로로도 끌 수 없음
+  if (PROTECTED_HOOKS.has(hookName)) return true;
+
   const all = loadFullConfig();
   if (!all) return true;
 
@@ -152,9 +178,9 @@ export function isHookEnabled(hookName: string): boolean {
   if (hooksSection?.[hookName]?.enabled === false) return false;
   if (hooksSection?.[hookName]?.enabled === true) return true;
 
-  // 2) 티어 설정 — compound-core는 절대 티어 비활성화로 끄지 않음
+  // 2) 티어 설정
   const tier = HOOK_TIER_MAP[hookName];
-  if (tier && tier !== 'compound-core') {
+  if (tier) {
     const tiers = all.tiers as Record<string, Record<string, unknown>> | undefined;
     if (tiers?.[tier]?.enabled === false) return false;
   }

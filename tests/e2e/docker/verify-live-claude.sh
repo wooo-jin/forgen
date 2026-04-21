@@ -213,6 +213,263 @@ fi
 
 echo ""
 
+# ─────────────────────────────────────────────────────────────
+#  Step 0 — Core Feedback Loop Invariants (3축 single source of truth)
+#  feedback_core_loop_invariant.md — 2026-04-20
+# ─────────────────────────────────────────────────────────────
+
+# ── Phase 8: 승급 경로 단일화 (incrementEvidence는 status를 바꾸지 않는다) ──
+echo "  [Phase 8: Promotion Path Invariant — candidate stays candidate under inject]"
+
+cat > /tmp/test-candidate.md <<'EOF'
+---
+name: inv-test-candidate
+version: 1
+status: candidate
+confidence: 0.6
+type: pattern
+scope: me
+tags: ['invariant-test']
+identifiers: []
+created: '2026-04-20'
+updated: '2026-04-20'
+supersedes: null
+extractedBy: auto
+evidence:
+  injected: 0
+  reflected: 0
+  negative: 0
+  sessions: 0
+  reExtracted: 0
+---
+
+body
+EOF
+cp /tmp/test-candidate.md ~/.forgen/me/solutions/inv-test-candidate.md
+
+# incrementEvidence 10회 호출 (과거에는 5회만으로 자동 verified 플립)
+node -e "
+import('$FORGEN_DIST/engine/solution-writer.js').then(async m => {
+  for (let i = 0; i < 10; i++) m.incrementEvidence('inv-test-candidate', 'injected');
+});
+" 2>/dev/null
+sleep 1
+
+FINAL_STATUS=$(node -e "
+const fs = require('fs');
+const content = fs.readFileSync(process.env.HOME + '/.forgen/me/solutions/inv-test-candidate.md', 'utf-8');
+const m = content.match(/status:\s*(\w+)/);
+const inj = content.match(/injected:\s*(\d+)/);
+console.log((m?m[1]:'?') + ':' + (inj?inj[1]:'?'));
+")
+
+if [ "$FINAL_STATUS" = "candidate:10" ]; then
+  pass "Promotion invariant held: candidate → still candidate after 10 injects (dual-path removed)"
+else
+  fail "Promotion invariant BROKEN: expected candidate:10, got $FINAL_STATUS"
+fi
+
+rm -f ~/.forgen/me/solutions/inv-test-candidate.md
+
+echo ""
+
+# ── Phase 9: Rollback 경로 단일화 (archive-based, never destructive) ──
+echo "  [Phase 9: Rollback Path Invariant — archive, never unlink]"
+
+YESTERDAY=$(date -d "yesterday" +%Y-%m-%d 2>/dev/null || date -v-1d +%Y-%m-%d)
+cat > ~/.forgen/me/solutions/inv-test-rollback.md <<EOF
+---
+name: inv-test-rollback
+version: 1
+status: candidate
+confidence: 0.5
+type: pattern
+scope: me
+tags: ['rollback-test']
+identifiers: []
+created: '$YESTERDAY'
+updated: '$YESTERDAY'
+supersedes: null
+extractedBy: auto
+evidence:
+  injected: 0
+  reflected: 0
+  negative: 0
+  sessions: 0
+  reExtracted: 0
+---
+
+body
+EOF
+
+TODAY=$(date +%Y-%m-%d)
+TWO_DAYS_AGO=$(date -d "2 days ago" +%Y-%m-%d 2>/dev/null || date -v-2d +%Y-%m-%d)
+
+# rollback 실행 (어제부터)
+forgen compound rollback --since "$TWO_DAYS_AGO" >/dev/null 2>&1 || true
+sleep 1
+
+# 원본 사라짐 확인
+if [ ! -f ~/.forgen/me/solutions/inv-test-rollback.md ]; then
+  pass "Rollback: source file removed from me/solutions"
+else
+  fail "Rollback did not move source file"
+fi
+
+# archive 존재 확인
+ARCHIVED=$(find ~/.forgen/lab/archived -name "*inv-test-rollback*" -type f 2>/dev/null | head -1)
+if [ -n "$ARCHIVED" ]; then
+  pass "Rollback: file archived at $ARCHIVED (reversible — no unlinkSync)"
+else
+  fail "Rollback did NOT archive file (destructive unlink regression?)"
+fi
+
+# dry-run 검증
+cat > ~/.forgen/me/solutions/inv-test-rollback-dry.md <<EOF
+---
+name: inv-test-rollback-dry
+version: 1
+status: candidate
+confidence: 0.5
+type: pattern
+scope: me
+tags: ['dry-run-test']
+identifiers: []
+created: '$YESTERDAY'
+updated: '$YESTERDAY'
+supersedes: null
+extractedBy: auto
+evidence:
+  injected: 0
+  reflected: 0
+  negative: 0
+  sessions: 0
+  reExtracted: 0
+---
+
+body
+EOF
+
+forgen compound rollback --since "$TWO_DAYS_AGO" --dry-run >/dev/null 2>&1 || true
+if [ -f ~/.forgen/me/solutions/inv-test-rollback-dry.md ]; then
+  pass "Rollback --dry-run did not modify file"
+else
+  fail "Rollback --dry-run destroyed file (dry-run broken)"
+fi
+rm -f ~/.forgen/me/solutions/inv-test-rollback-dry.md
+# archive 정리 (다음 phase 영향 방지)
+find ~/.forgen/lab/archived -name "rollback-*" -mmin -5 -exec rm -rf {} + 2>/dev/null || true
+
+echo ""
+
+# ── Phase 10: compound-core 가드레일 (config로 끌 수 없음) ──
+echo "  [Phase 10: Compound-Core Guardrail — cannot be disabled via config]"
+
+# project-level config로 compound-core hook 비활성화 시도
+mkdir -p /workspace/test-project/.forgen
+cat > /workspace/test-project/.forgen/hook-config.json <<'EOF'
+{
+  "hooks": {
+    "post-tool-use": { "enabled": false },
+    "solution-injector": { "enabled": false },
+    "pre-tool-use": { "enabled": false },
+    "session-recovery": { "enabled": false }
+  },
+  "tiers": {
+    "compound-core": { "enabled": false }
+  }
+}
+EOF
+
+# isHookEnabled 직접 호출 — 모두 true여야 (가드레일)
+GUARD_RESULT=$(FORGEN_CWD=/workspace/test-project node -e "
+import('$FORGEN_DIST/hooks/hook-config.js').then(m => {
+  const results = {};
+  for (const name of ['post-tool-use','solution-injector','pre-tool-use','session-recovery','skill-injector']) {
+    results[name] = m.isHookEnabled(name);
+  }
+  console.log(JSON.stringify(results));
+});
+" 2>/dev/null)
+
+echo "  guardrail results: $GUARD_RESULT"
+if echo "$GUARD_RESULT" | grep -qE '"post-tool-use":\s*true' \
+  && echo "$GUARD_RESULT" | grep -qE '"solution-injector":\s*true' \
+  && echo "$GUARD_RESULT" | grep -qE '"pre-tool-use":\s*true' \
+  && echo "$GUARD_RESULT" | grep -qE '"session-recovery":\s*true'; then
+  pass "Guardrail: compound-core hooks stay enabled despite project config disable"
+else
+  fail "Guardrail BROKEN: some compound-core hook got disabled — $GUARD_RESULT"
+fi
+
+# non-protected hook은 여전히 꺼지는지 (regression)
+cat > /workspace/test-project/.forgen/hook-config.json <<'EOF'
+{
+  "hooks": {
+    "secret-filter": { "enabled": false }
+  }
+}
+EOF
+NON_PROT=$(FORGEN_CWD=/workspace/test-project node -e "
+import('$FORGEN_DIST/hooks/hook-config.js').then(m => {
+  console.log(m.isHookEnabled('secret-filter'));
+});
+" 2>/dev/null)
+if [ "$NON_PROT" = "false" ]; then
+  pass "Non-protected hook (secret-filter) still respects disable config"
+else
+  fail "Non-protected hook regression: secret-filter should be disabled but got $NON_PROT"
+fi
+rm -rf /workspace/test-project/.forgen
+
+echo ""
+
+# ── Phase 11: finalizeSession 프로덕션 wiring (Stop hook → pending → unknown) ──
+echo "  [Phase 11: finalizeSession wired in Stop hook]"
+
+# pending outcome 하나 심기
+SID2="inv-finalize-$(date +%s)"
+node -e "
+import('$FORGEN_DIST/engine/solution-outcomes.js').then(m => {
+  m.appendPending('$SID2', [
+    { solution: 'inv-pending-a', match_score: 0.9, injected_chars: 50 }
+  ]);
+});
+" 2>/dev/null
+sleep 1
+
+# pending 파일 확인
+SANITIZED=$(echo "$SID2" | sed 's/[^a-zA-Z0-9_-]/_/g')
+PENDING_PATH=~/.forgen/state/outcome-pending-$SANITIZED.json
+if [ -f "$PENDING_PATH" ]; then
+  pass "pending file created before Stop"
+else
+  fail "appendPending did not create pending file: $PENDING_PATH"
+fi
+
+# Stop hook 실행 (context-guard Stop 분기)
+STOP_OUT=$(echo "{\"stop_hook_type\":\"end_turn\",\"session_id\":\"$SID2\"}" | node "$FORGEN_DIST/hooks/context-guard.js" 2>&1)
+
+# pending 파일이 사라져야 함
+if [ ! -f "$PENDING_PATH" ]; then
+  pass "Stop hook finalized pending (file removed)"
+else
+  fail "Stop hook did NOT finalize pending (file still exists at $PENDING_PATH)"
+fi
+
+# outcomes jsonl에 unknown event 기록됐는지
+OUTCOME_PATH=~/.forgen/state/outcomes/$SANITIZED.jsonl
+if [ -f "$OUTCOME_PATH" ] && grep -q '"outcome":"unknown"' "$OUTCOME_PATH"; then
+  pass "Stop hook recorded unknown outcome (structural accept bias removed)"
+else
+  fail "No unknown outcome recorded — finalizeSession wiring broken"
+fi
+
+# 정리
+rm -f "$OUTCOME_PATH"
+
+echo ""
+
 # ── Summary ──
 echo "═══════════════════════════════════════════════════════"
 echo "  Live Session Results: $PASS passed, $FAIL failed"

@@ -27,6 +27,29 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+// P1-C1 fix (2026-04-20): plugin.json version을 package.json의 version으로 동기화.
+// 과거에는 package.json v0.3.1 vs plugin.json v5.1.2로 최초 커밋부터 분리된 버전
+// 계보가 있었고, Claude Code Plugin SDK가 plugin.json 버전으로 업데이트 감지를
+// 할 경우 0.3.0→0.3.1이 "변경 없음"으로 인식될 수 있었다. prepack/publish 시에만
+// 주입하므로 dev 수정 흐름에는 영향 없음.
+function syncPluginVersion() {
+  const pkg = require(path.resolve(__dirname, '..', 'package.json'));
+  const targetVersion = pkg.version;
+  const pluginFiles = [
+    path.resolve(__dirname, '..', 'plugin.json'),
+    path.resolve(__dirname, '..', '.claude-plugin', 'plugin.json'),
+  ];
+  for (const pluginPath of pluginFiles) {
+    if (!fs.existsSync(pluginPath)) continue;
+    const original = fs.readFileSync(pluginPath, 'utf-8');
+    const data = JSON.parse(original);
+    if (data.version === targetVersion) continue;
+    data.version = targetVersion;
+    fs.writeFileSync(pluginPath, JSON.stringify(data, null, 2) + '\n');
+    console.log(`[forgen prepack] ${path.basename(path.dirname(pluginPath))}/plugin.json version → ${targetVersion}`);
+  }
+}
+
 async function main() {
   // Set HOME to a throwaway empty tmp dir so `detectInstalledPlugins`
   // can't find any plugin caches. Keep the original HOME restored in
@@ -34,6 +57,9 @@ async function main() {
   const originalHome = process.env.HOME;
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'forgen-prepack-hooks-'));
   process.env.HOME = tmpHome;
+
+  // P1-C1: plugin.json version을 package.json에 맞춤 (두 배포 포맷 단일 소스화)
+  syncPluginVersion();
 
   try {
     // Dist must exist (npm `prepare` runs the build before `prepack`

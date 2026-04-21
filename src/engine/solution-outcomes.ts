@@ -106,7 +106,13 @@ export function flushAccept(sessionId: string, excludeSolutions: Set<string> = n
     const kept: PendingEntry[] = [];
     let flushed = 0;
     for (const p of state.pending) {
-      if (excludeSolutions.has(p.solution)) continue;
+      // P1-L1 fix (2026-04-20): 이전에는 excluded pending을 `continue`로 건너뛰면서
+      // `kept`에도 push 안 하고 appendOutcome도 안 해서 증거 없이 사라졌다.
+      // 이미 correct/error로 attribute된 항목은 보존 (나중 prompt에서 재처리 방지).
+      if (excludeSolutions.has(p.solution)) {
+        kept.push(p);
+        continue;
+      }
       appendOutcome({
         ts: now,
         session_id: sessionId,

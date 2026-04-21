@@ -14,6 +14,14 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { createRequire } from 'node:module';
+
+// P0-1 fix (2026-04-20): ESM `"type": "module"` 프로젝트에서 `require`가 글로벌에
+// 없어 이전에는 renderFitnessSummary 안의 `require('../engine/solution-fitness.js')`가
+// 항상 ReferenceError로 catch 경로에 떨어져 Solution Fitness 대시보드 섹션이
+// 조용히 무효화됐다 (정상처럼 "아직 outcome 이벤트 데이터 없음" 출력).
+// createRequire로 CJS require를 ESM 환경에 부트스트랩 — session-store.ts 패턴 동일.
+const require = createRequire(import.meta.url);
 import {
   ME_SOLUTIONS,
   ME_RULES,

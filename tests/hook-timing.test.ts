@@ -73,12 +73,16 @@ describe('hook-timing', () => {
     expect(stats[0].hook).toBe('ok');
   });
 
-  it('recordHookTiming rotates when exceeding MAX_LINES', () => {
+  it('recordHookTiming rotates when exceeding MAX_LINES and size gate', () => {
     const logPath = path.join(tmpDir, 'hook-timing.jsonl');
-    // Write 510 entries
+    // P0-2 (2026-04-20) introduced a size gate: rotation only fires when
+    // file size exceeds ROTATE_SIZE_BYTES (~80KB). The earlier test only
+    // wrote 510 short entries (~33KB) which never crossed the gate — pad
+    // the event name so each line is ~200B and 510 lines ≈ 100KB.
+    const padding = 'X'.repeat(160);
     const lines: string[] = [];
     for (let i = 0; i < 510; i++) {
-      lines.push(JSON.stringify({ hook: 'test', ms: i, event: 'X', at: Date.now() }));
+      lines.push(JSON.stringify({ hook: 'test', ms: i, event: padding, at: Date.now() }));
     }
     fs.writeFileSync(logPath, lines.join('\n') + '\n');
 

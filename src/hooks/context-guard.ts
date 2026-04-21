@@ -20,6 +20,7 @@ import { loadHookConfig, isHookEnabled } from './hook-config.js';
 import { approve, approveWithContext, approveWithWarning, failOpenWithTracking } from './shared/hook-response.js';
 import { HANDOFFS_DIR, STATE_DIR } from '../core/paths.js';
 import { recordHookTiming } from './shared/hook-timing.js';
+import { sanitizeId } from './shared/sanitize-id.js';
 
 const log = createLogger('context-guard');
 const CONTEXT_STATE_PATH = path.join(STATE_DIR, 'context-guard.json');
@@ -114,6 +115,17 @@ export async function main(): Promise<void> {
   // Stop 훅: stop_hook_type이 있으면 처리
   if (input.stop_hook_type) {
     _hookEvent = 'Stop';
+
+    // 세션 종료 시 pending outcome을 unknown으로 finalize.
+    // 과거에는 프로덕션에서 호출되지 않아 pending이 다음 세션의 flushAccept에
+    // accept로 쓸려들어가는 구조적 optimistic bias가 있었다 (2026-04-20).
+    // finalizeSession은 idempotent (pending 없으면 0 반환, 에러는 log.debug만).
+    try {
+      const { finalizeSession } = await import('../engine/solution-outcomes.js');
+      finalizeSession(sessionId);
+    } catch (e) {
+      log.debug('finalizeSession 실패 (fail-open)', e);
+    }
 
     // forge-loop 활성 시 미완료 스토리 감지 → 지속 메시지 주입 (polite-stop 방지)
     const forgeLoopBlock = checkForgeLoopActive();
@@ -221,7 +233,9 @@ export async function main(): Promise<void> {
  */
 function buildSessionSummary(sessionId: string, promptCount: number): string {
   try {
-    const cachePath = path.join(STATE_DIR, `solution-cache-${sessionId}.json`);
+    // P1-S3 fix (2026-04-20): sanitizeId로 path traversal 차단.
+    // 다른 세션 캐시 경로는 모두 sanitizeId 사용. 여기만 누락되어 있었다.
+    const cachePath = path.join(STATE_DIR, `solution-cache-${sanitizeId(sessionId)}.json`);
     if (!fs.existsSync(cachePath)) return '';
     const cache = JSON.parse(fs.readFileSync(cachePath, 'utf-8')) as {
       injected?: Array<{ name: string; injectedAt: string }>;

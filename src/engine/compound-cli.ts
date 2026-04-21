@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { extractTags, parseFrontmatterOnly, parseSolutionV3 } from './solution-format.js';
 import { mutateSolutionFile } from './solution-writer.js';
 
-import { ME_SOLUTIONS, ME_RULES } from '../core/paths.js';
+import { ARCHIVED_DIR, ME_SOLUTIONS, ME_RULES } from '../core/paths.js';
 
 interface CompoundEntrySummary {
   name: string;
@@ -263,34 +263,92 @@ export function retagSolutions(): void {
   console.log(`\n  Retagged ${retagged}/${entries.length} solutions.\n`);
 }
 
-/** Rollback auto-extracted solutions since a given date */
-export function rollbackSolutions(sinceDate: string): void {
+/** Result of a rollback operation — used by tests and callers that need counts. */
+export interface RollbackCliResult {
+  archived: string[];
+  archiveDir: string | null;
+  skipped: string[];
+  errors: string[];
+  dryRun: boolean;
+}
+
+/**
+ * Rollback auto-extracted solutions created since a given date.
+ *
+ * Invariant (2026-04-20, feedback_core_loop_invariant):
+ *   rollback은 **archive 이동**만 수행한다. `fs.unlinkSync`로 솔루션 파일을
+ *   영구 삭제하지 않는다. 실수로 rollback을 실행해도 `~/.forgen/lab/archived/
+ *   rollback-{ts}/`에서 복구할 수 있어야 한다. (과거 `unlinkSync` 경로는
+ *   time-bounded rollback이 "되돌리기 불가 영구 삭제"로 동작하던 버그였다.)
+ *
+ * 필터 기준:
+ *   - category === 'solution'만 대상 (rule은 제외)
+ *   - reflected > 0 OR sessions > 0인 것은 유지 (사용된 솔루션 보호)
+ *   - created >= since 인 것만 대상
+ *
+ * dryRun=true면 아무 파일도 건드리지 않고 대상 목록만 반환.
+ */
+export function rollbackSolutions(
+  sinceDate: string,
+  opts: { dryRun?: boolean } = {},
+): RollbackCliResult {
+  const result: RollbackCliResult = {
+    archived: [],
+    archiveDir: null,
+    skipped: [],
+    errors: [],
+    dryRun: !!opts.dryRun,
+  };
+
   const since = new Date(sinceDate);
   if (Number.isNaN(since.getTime())) {
     console.log(`\n  Invalid date: ${sinceDate}\n`);
-    return;
+    result.errors.push(`invalid-date:${sinceDate}`);
+    return result;
   }
 
   const solutions = scanEntries().filter((entry) => entry.category === 'solution');
-  const toRemove = solutions.filter((solution) => {
-    if (solution.evidence.reflected > 0 || solution.evidence.sessions > 0) return false; // keep used ones
+  const toRollback = solutions.filter((solution) => {
+    if (solution.evidence.reflected > 0 || solution.evidence.sessions > 0) return false;
     const created = new Date(solution.created);
     return created >= since;
   });
 
-  if (toRemove.length === 0) {
+  if (toRollback.length === 0) {
     console.log(`\n  No solutions to rollback since ${sinceDate}.\n`);
-    return;
+    return result;
   }
 
-  console.log(`\n  Rolling back ${toRemove.length} solutions since ${sinceDate}:\n`);
-  for (const sol of toRemove) {
+  if (opts.dryRun) {
+    console.log(`\n  [dry-run] ${toRollback.length} solutions would be archived since ${sinceDate}:\n`);
+    for (const sol of toRollback) {
+      console.log(`    Would archive: ${sol.name}`);
+      result.skipped.push(sol.filePath);
+    }
+    console.log(`\n  Re-run without --dry-run to archive them.\n`);
+    return result;
+  }
+
+  const archiveDir = path.join(ARCHIVED_DIR, `rollback-${Date.now()}`);
+  result.archiveDir = archiveDir;
+
+  console.log(`\n  Rolling back ${toRollback.length} solutions since ${sinceDate} → ${archiveDir}:\n`);
+  for (const sol of toRollback) {
     try {
-      fs.unlinkSync(sol.filePath);
-      console.log(`    Removed: ${sol.name}`);
-    } catch {
-      console.log(`    Failed: ${sol.name}`);
+      fs.mkdirSync(archiveDir, { recursive: true });
+      // 원본 경로 정보를 destName에 보존 — 복원 시 원위치 판별용.
+      // 예: "solutions__my-pattern.md"
+      const originDir = path.basename(path.dirname(sol.filePath));
+      const destName = `${originDir}__${path.basename(sol.filePath)}`;
+      fs.renameSync(sol.filePath, path.join(archiveDir, destName));
+      console.log(`    Archived: ${sol.name}`);
+      result.archived.push(sol.filePath);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.log(`    Failed: ${sol.name} — ${msg}`);
+      result.errors.push(`${sol.filePath}: ${msg}`);
     }
   }
-  console.log();
+  console.log(`\n  ${result.archived.length}/${toRollback.length} archived. Restore from ${archiveDir} if needed.\n`);
+  return result;
 }

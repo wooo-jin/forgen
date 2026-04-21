@@ -373,11 +373,12 @@ export async function handleCompound(args: string[]): Promise<void> {
     const sinceIdx = args.indexOf('--since');
     const since = sinceIdx !== -1 ? args[sinceIdx + 1] : undefined;
     if (!since) {
-      console.log('  Usage: forgen compound rollback --since 2026-03-20\n');
+      console.log('  Usage: forgen compound rollback --since YYYY-MM-DD [--dry-run]\n');
       return;
     }
+    const dryRun = args.includes('--dry-run');
     const { rollbackSolutions } = await import('./compound-cli.js');
-    rollbackSolutions(since);
+    rollbackSolutions(since, { dryRun });
     return;
   }
 

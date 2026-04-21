@@ -1067,12 +1067,14 @@ function loadTunedMatcherWeights(): { tfidf: number; bm25: number; bigram: numbe
  * entries and almost always lose the first few rounds — not because
  * they're worse, but because matchers favor solutions with richer tag
  * histories. A small confidence multiplier lets candidates surface often
- * enough to accumulate outcome data, after which the fitness loop
- * decides their fate.
+ * enough to accumulate reflected/sessions evidence, after which the
+ * lifecycle loop decides their fate.
  *
  * The 1.3× factor is a starting point (Q1 in docs/design-solution-evolution.md).
- * Automatic deactivation after 5 accumulated injections is handled by a
- * separate promoter that flips `status` to `verified`.
+ * Bonus deactivation happens implicitly when compound-lifecycle.ts::
+ * runLifecycleCheck promotes the candidate to `verified` based on accumulated
+ * reflected/sessions evidence. There is no inject-count-based auto promotion
+ * (removed 2026-04-20 — see feedback_core_loop_invariant).
  */
 const CANDIDATE_EXPLORATION_MULTIPLIER = 1.3;
 

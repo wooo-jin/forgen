@@ -22,6 +22,7 @@ import { isHookEnabled } from './hook-config.js';
 import { truncateContent } from './shared/injection-caps.js';
 import { calculateBudget } from './shared/context-budget.js';
 import { approve, approveWithContext, failOpenWithTracking } from './shared/hook-response.js';
+import { escapeAllXmlTags } from './prompt-injection-filter.js';
 
 interface HookInput {
   prompt: string;
@@ -51,9 +52,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  // 태그 이스케이프: notepad 내용 내의 닫는 태그를 안전하게 처리
-  const safeContent = truncateContent(notepadContent.trim(), calculateBudget(effectiveCwd).notepadMax)
-    .replace(/<\/forgen-notepad>/g, '&lt;/forgen-notepad&gt;');
+  // P1-S2 fix (2026-04-20): 이전에는 `</forgen-notepad>` 리터럴 하나만 치환했지만,
+  // notepad 파일에 `<system>`, `<assistant>` 같은 임의 XML 태그가 있으면 그대로
+  // LLM에 전달되어 지시 주입 위험. escapeAllXmlTags로 모든 태그를 escape한다.
+  const truncated = truncateContent(notepadContent.trim(), calculateBudget(effectiveCwd).notepadMax);
+  const safeContent = escapeAllXmlTags(truncated);
   const injection = `<forgen-notepad>\n${safeContent}\n</forgen-notepad>`;
 
   console.log(approveWithContext(injection, 'UserPromptSubmit'));
