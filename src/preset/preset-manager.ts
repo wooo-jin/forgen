@@ -98,8 +98,19 @@ export function computeEffectiveTrust(
   }
 
   if (runtimeRank > desiredRank) {
-    // runtime > desired → 조용히 진행, effective만 상향
-    return { effective: runtimeTrust, warning: null };
+    // runtime > desired → 에스컬레이션.
+    //
+    // Audit fix #3 (2026-04-21): 이전에는 `warning: null`로 조용히 진행했다.
+    // 사용자가 `가드레일 우선`을 선택했는데 runtime에서 `--dangerously-skip-
+    // permissions`가 주입되면 effective가 `완전 신뢰 실행`로 무경고 상승해
+    // audit 로그와 대시보드가 실제 실행 신뢰도와 어긋났다. 이제는 상승 이유를
+    // warning으로 반환해 session state에 기록하고 사용자에게 표시한다.
+    return {
+      effective: runtimeTrust,
+      warning:
+        `Trust 상승: desired=${desired}, runtime=${runtimeTrust} (${runtime.permission_mode}) ` +
+        `— runtime 권한이 더 관대합니다. --dangerously-skip-permissions나 config가 이번 세션을 덮어썼습니다.`,
+    };
   }
 
   return { effective: desired, warning: null };

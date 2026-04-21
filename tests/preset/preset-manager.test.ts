@@ -22,10 +22,12 @@ describe('computeEffectiveTrust', () => {
     expect(result.warning).toContain('Trust 하향');
   });
 
-  it('runtime > desired → silent upgrade', () => {
+  it('runtime > desired → escalation with Trust 상승 warning (audit fix #3)', () => {
+    // 2026-04-21 audit: silent escalation 대신 warning으로 사용자에게 노출.
     const result = computeEffectiveTrust('가드레일 우선', bypassed);
     expect(result.effective).toBe('완전 신뢰 실행');
-    expect(result.warning).toBeNull();
+    expect(result.warning).not.toBeNull();
+    expect(result.warning).toMatch(/Trust 상승/);
   });
 
   it('relaxed runtime + 승인 완화 → match', () => {

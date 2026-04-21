@@ -20,10 +20,17 @@ if (!launchArgs.includes('--dangerously-skip-permissions')) {
 }
 
 async function main() {
-  // Security warning — fgx bypasses all Claude Code permission checks
+  // Security warning — fgx bypasses all Claude Code permission checks.
+  //
+  // Audit fix #3 (2026-04-21): The warning banner is shown regardless of
+  // the user's profile trust policy, which means "가드레일 우선" users who
+  // alias `fgx` unknowingly run with zero guardrails. Users who rely on
+  // the profile trust policy should NOT use `fgx`. Surface the mismatch
+  // loudly (harness.ts also prints the Trust 상승 warning downstream).
   console.warn('\n  ⚠  fgx: ALL permission checks are disabled (--dangerously-skip-permissions)');
   console.warn('  ⚠  Claude Code will execute tools without asking for confirmation.');
-  console.warn('  ⚠  Use only in trusted environments.\n');
+  console.warn('  ⚠  Use only in trusted environments. If your profile trust policy is');
+  console.warn('  ⚠  "가드레일 우선" or "승인 완화", consider `forgen` (no flag) instead.\n');
 
   // fgx는 서브커맨드 없이 바로 Claude Code 실행 전용
   const firstRun = isFirstRun();

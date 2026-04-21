@@ -54,7 +54,19 @@ export function createProfile(
 }
 
 export function loadProfile(): Profile | null {
-  return safeReadJSON<Profile | null>(FORGE_PROFILE, null);
+  const raw = safeReadJSON<unknown>(FORGE_PROFILE, null);
+  if (raw === null) return null;
+  // Audit fix #6 (2026-04-21): 이전에는 disk 내용을 그대로 Profile로
+  // 타입 단언해 반환 → legacy-shaped JSON (model_version 없음 / 1.x / 잘못된 모양)
+  // 이 downstream으로 흘러들어가 facets/trust_preferences 접근 시 undefined
+  // 참조가 되었다. isV1Profile 가드를 통과한 경우에만 반환, 아니면 null로
+  // 취급하여 v1-bootstrap이 cutover 흐름을 재실행하게 한다.
+  if (!isV1Profile(raw)) return null;
+  return raw;
+}
+
+export function loadProfileRaw(): unknown {
+  return safeReadJSON<unknown>(FORGE_PROFILE, null);
 }
 
 export function saveProfile(profile: Profile): void {
@@ -62,6 +74,14 @@ export function saveProfile(profile: Profile): void {
   atomicWriteJSON(FORGE_PROFILE, profile, { pretty: true });
 }
 
+/**
+ * File existence probe. NOTE: this returns `true` even if the on-disk
+ * file is legacy/invalid — callers that need "valid v1 profile present"
+ * should combine this with `loadProfile() !== null`. The raw existence
+ * check is kept for bootstrap logic that explicitly differentiates
+ * "file exists but legacy" from "no file at all" (e.g. to decide
+ * whether to run `runLegacyCutover`).
+ */
 export function profileExists(): boolean {
   return fs.existsSync(FORGE_PROFILE);
 }

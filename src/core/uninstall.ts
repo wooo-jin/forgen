@@ -127,11 +127,13 @@ function cleanSettings(): void {
     return;
   }
 
-  // env에서 COMPOUND_ 접두어 키 제거
+  // Audit fix #7 (2026-04-21): env 정리가 `COMPOUND_` 접두어만 검사해서
+  // install이 주입한 `FORGEN_*` 키(예: FORGEN_HARNESS, FORGEN_CWD)가
+  // uninstall 후에도 settings.json에 영구 잔존했다. 이제 둘 다 정리.
   const env = settings.env as Record<string, string> | undefined;
   if (env) {
     for (const key of Object.keys(env)) {
-      if (key.startsWith('COMPOUND_')) delete env[key];
+      if (key.startsWith('COMPOUND_') || key.startsWith('FORGEN_')) delete env[key];
     }
     if (Object.keys(env).length === 0) {
       delete settings.env;
@@ -172,9 +174,17 @@ function cleanSettings(): void {
     }
   }
 
-  // statusLine이 forgen status면 제거
+  // statusLine이 forgen이 설치한 command 중 하나면 제거.
+  //
+  // Audit fix #7 (2026-04-21): 이전 체크는 `'forgen status'`만 인식했지만
+  // 실제 install은 `settings-injector.ts:59`에서 `'forgen me'`를 주입한다.
+  // command 문자열이 `forgen`으로 시작하는 경우를 모두 forgen 소유로 보고
+  // 제거 — 사용자 커스텀 statusLine(예: `custom-cli ...`)은 건드리지 않음.
   const statusLine = settings.statusLine as Record<string, unknown> | undefined;
-  if (statusLine?.command === 'forgen status') {
+  if (
+    typeof statusLine?.command === 'string' &&
+    /^forgen(\s|$)/.test(statusLine.command.trim())
+  ) {
     delete settings.statusLine;
   }
 
