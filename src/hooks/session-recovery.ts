@@ -390,7 +390,6 @@ async function main(): Promise<void> {
 
   // Compound v3: Run lifecycle check once per day
   try {
-    const lifecycleModulePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'engine', 'compound-lifecycle.js');
     const lastLifecyclePath = path.join(STATE_DIR, 'last-lifecycle.json');
     let shouldRun = true;
     try {
@@ -401,13 +400,26 @@ async function main(): Promise<void> {
       }
     } catch { /* last-lifecycle.json parse failure — run lifecycle check anyway */ }
     if (shouldRun) {
-      // B-4: detached background spawn으로 분리 — hook timeout 초과 방지
+      // B-4: detached background spawn — hook timeout 초과 방지.
+      //
+      // Audit fix #5 (2026-04-21): prior invocation interpolated
+      // `sessionId` into a `-e` template literal
+      //   `import('${path}').then(m => m.runLifecycleCheck('${sessionId}'))`
+      // which created a code-injection surface (a crafted sessionId
+      // could break out of the single quotes and execute arbitrary JS
+      // under the user's Claude-Code privileges). The runner was moved
+      // to a dedicated script file and the id is now passed via argv —
+      // no shell, no eval, no interpolation.
+      const runnerPath = path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        'internal',
+        'run-lifecycle-check.js',
+      );
       const { spawn: spawnLifecycle } = await import('node:child_process');
-      const lifecycleRunner = spawnLifecycle('node', [
-        '--input-type=module',
-        '-e',
-        `import('${lifecycleModulePath.replace(/\\/g, '/')}').then(m => m.runLifecycleCheck('${sessionId}'))`,
-      ], { detached: true, stdio: 'ignore' });
+      const lifecycleRunner = spawnLifecycle('node', [runnerPath, sessionId], {
+        detached: true,
+        stdio: 'ignore',
+      });
       lifecycleRunner.unref();
       const { atomicWriteJSON: writeJSON } = await import('./shared/atomic-write.js');
       writeJSON(lastLifecyclePath, { lastRun: new Date().toISOString() });

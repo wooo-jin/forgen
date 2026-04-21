@@ -130,15 +130,26 @@ describe('postinstall', () => {
       expect(settings.env?.COMPOUND_HARNESS).toBe('1');
     });
 
-    it('should handle corrupted settings.json gracefully', () => {
+    it('corrupted settings.json → 원본 보존 + .corrupt-<ts> 백업 + 쓰기 abort (audit fix #2/#10)', () => {
+      // 2026-04-21 audit: 이전엔 parse 실패 시 `{}`로 시작해서 모든 settings를
+      // 덮어썼다 (데이터 손실). 이제 원본을 `.corrupt-<ts>`로 보존하고 쓰기를
+      // 건너뛴다. runPostinstall은 npm install을 깨뜨리지 않도록 최상위 try/
+      // catch가 걸려 있어 여전히 throw 없이 통과해야 한다.
       fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
-      fs.writeFileSync(SETTINGS_PATH, '{invalid json!!!');
+      const corruptContent = '{invalid json!!!';
+      fs.writeFileSync(SETTINGS_PATH, corruptContent);
 
       expect(() => runPostinstall()).not.toThrow();
 
-      const settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8'));
-      // hooks는 없지만, env는 설정되어야 함
-      expect(settings.env?.COMPOUND_HARNESS).toBe('1');
+      // 원본이 그대로 남아 있음 (settings 쓰기가 건너뛰어졌는지)
+      expect(fs.readFileSync(SETTINGS_PATH, 'utf-8')).toBe(corruptContent);
+
+      // 손상본이 .corrupt-<ts>로 백업됨
+      const claudeDir = path.dirname(SETTINGS_PATH);
+      const corruptBackups = fs
+        .readdirSync(claudeDir)
+        .filter((f) => f.includes('.corrupt-'));
+      expect(corruptBackups.length).toBeGreaterThan(0);
     });
   });
 

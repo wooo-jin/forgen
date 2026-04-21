@@ -679,7 +679,21 @@ function applyMcpToClaudeJson() {
   const claudeJsonPath = join(HOME, '.claude.json');
   let claudeJson = {};
   if (existsSync(claudeJsonPath)) {
-    try { claudeJson = JSON.parse(readFileSync(claudeJsonPath, 'utf-8')); } catch { /* ignore */ }
+    try {
+      claudeJson = JSON.parse(readFileSync(claudeJsonPath, 'utf-8'));
+    } catch (e) {
+      // Audit fix #10 (2026-04-21): silent parse-failure used to let the
+      // merged write below overwrite the user's malformed-but-original
+      // ~/.claude.json, wiping all their other plugin configs. Preserve
+      // and skip instead.
+      const corruptPath = `${claudeJsonPath}.corrupt-${Date.now()}`;
+      try { copyFileSync(claudeJsonPath, corruptPath); } catch { /* best-effort */ }
+      console.error(
+        `[forgen] ${claudeJsonPath} failed to parse; preserved at ${corruptPath}. ` +
+        `Skipping MCP registration.`,
+      );
+      return false;
+    }
   }
 
   const mcpServers = claudeJson.mcpServers ?? {};
@@ -689,7 +703,11 @@ function applyMcpToClaudeJson() {
   };
   claudeJson.mcpServers = mcpServers;
 
-  writeFileSync(claudeJsonPath, JSON.stringify(claudeJson, null, 2));
+  // Atomic write — tmp file + rename so a partial write never leaves
+  // ~/.claude.json in a torn state for any concurrent reader.
+  const tmpPath = `${claudeJsonPath}.tmp.${process.pid}`;
+  writeFileSync(tmpPath, JSON.stringify(claudeJson, null, 2));
+  renameSync(tmpPath, claudeJsonPath);
   fixOwnership(claudeJsonPath);
   return true;
 }
@@ -721,9 +739,29 @@ function main() {
   ensureDirectories();
 
   // ── 1. settings.json 한 번 읽기 ──
+  //
+  // Audit finding #2/#10 (2026-04-21): prior `catch { settings = {} }`
+  // silently swallowed parse failures and let the merged write below
+  // clobber the user's malformed-but-original settings.json — a data
+  // loss path triggered by any partial edit or external corruption.
+  // Now: preserve the corrupt file as `.corrupt-<ts>`, abort the
+  // settings write (and subsequent MCP registration + ownership fix
+  // that also touches ~/.claude.json), surface the warning via npm's
+  // postinstall output. The outer try/catch at the bottom ensures
+  // `npm install` still succeeds; only the settings mutation is
+  // skipped.
   let settings = {};
   if (existsSync(SETTINGS_PATH)) {
-    try { settings = JSON.parse(readFileSync(SETTINGS_PATH, 'utf-8')); } catch { /* 파싱 실패 시 빈 설정 */ }
+    try {
+      settings = JSON.parse(readFileSync(SETTINGS_PATH, 'utf-8'));
+    } catch (e) {
+      const corruptPath = `${SETTINGS_PATH}.corrupt-${Date.now()}`;
+      try { copyFileSync(SETTINGS_PATH, corruptPath); } catch { /* best-effort */ }
+      throw new Error(
+        `[forgen] ${SETTINGS_PATH} failed to parse: ${e?.message ?? e}. ` +
+        `Preserved corrupt copy at ${corruptPath}. Skipping settings injection to avoid data loss.`,
+      );
+    }
   }
 
   // ── 2. 플러그인 등록 (installed_plugins.json + skills) ──
@@ -787,10 +825,19 @@ function main() {
     console.error(`[forgen] MCP server registration failed: ${err?.message ?? err}`);
   }
 
-  // ── 7. settings.json 한 번 쓰기 ──
+  // ── 7. settings.json 한 번 쓰기 (atomic) ──
+  //
+  // Audit fix #10 (2026-04-21): prior direct writeFileSync could leave
+  // settings.json truncated / partially-written if the process was
+  // interrupted (sudo shell SIGINT, npm exit). Tmp + rename is atomic
+  // on POSIX within the same directory. Lock is NOT acquired here —
+  // postinstall is serialized by npm and we don't want to introduce a
+  // cross-module dependency from a build-time script.
   try {
     mkdirSync(dirname(SETTINGS_PATH), { recursive: true });
-    writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
+    const tmpPath = `${SETTINGS_PATH}.tmp.${process.pid}`;
+    writeFileSync(tmpPath, JSON.stringify(settings, null, 2));
+    renameSync(tmpPath, SETTINGS_PATH);
   } catch (err) {
     console.error(`[forgen] settings.json write failed: ${err?.message ?? err}`);
   }

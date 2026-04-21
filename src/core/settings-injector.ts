@@ -14,6 +14,7 @@ import {
   acquireLock,
   atomicWriteFileSync,
   CLAUDE_DIR,
+  readSettingsSafely,
   releaseLock,
   rollbackSettings,
   SETTINGS_BACKUP_PATH,
@@ -35,20 +36,29 @@ function stripForgenManagedRules(rules: string[]): string[] {
   return rules.filter((r) => !FORGEN_PERMISSION_RULES.has(r));
 }
 
-/** Read settings.json with backup, or return empty object on failure. */
+/**
+ * Read settings.json + create forgen-backup of the valid content.
+ *
+ * Parse-failure handling moved to `readSettingsSafely` in settings-lock.ts
+ * (2026-04-21 audit fix #2): prior silent `{}` fallback would let the
+ * caller write merged forgen settings over the user's malformed-but-
+ * original file, losing their data. We now preserve the corrupt file to
+ * `.corrupt-<ts>` and propagate the error — `injectSettings` releases
+ * the lock and the harness bails out of writing.
+ */
 function readSettingsWithBackup(): Record<string, unknown> {
-  if (!fs.existsSync(SETTINGS_PATH)) return {};
-  try {
-    const settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8'));
-    fs.copyFileSync(SETTINGS_PATH, SETTINGS_BACKUP_PATH);
-    return settings as Record<string, unknown>;
-  } catch (e) {
-    log.debug(
-      'settings.json 파싱 실패, 빈 설정으로 시작',
-      new ConfigError('settings.json parse failed', { configPath: SETTINGS_PATH, cause: e }),
-    );
-    return {};
+  const settings = readSettingsSafely();
+  if (Object.keys(settings).length > 0 && fs.existsSync(SETTINGS_PATH)) {
+    try {
+      fs.copyFileSync(SETTINGS_PATH, SETTINGS_BACKUP_PATH);
+    } catch (e) {
+      log.debug(
+        'settings.json backup 복사 실패 (쓰기는 계속 진행)',
+        new ConfigError('settings.json backup failed', { configPath: SETTINGS_PATH, cause: e }),
+      );
+    }
   }
+  return settings;
 }
 
 /** Apply forgen statusLine only if user hasn't set a custom one. */

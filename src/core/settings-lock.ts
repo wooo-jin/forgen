@@ -36,7 +36,24 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-/** lockfile 획득 (최대 3초 대기, 100ms 간격 재시도) */
+/** settings.json 쓰기 경로가 락으로 보호받지 못할 때 던지는 오류. */
+export class SettingsLockError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SettingsLockError';
+  }
+}
+
+/**
+ * lockfile 획득 (최대 3초 대기, 100ms 간격 재시도).
+ *
+ * Audit fix #1 (2026-04-21): 이전 구현은 타임아웃 후 기존 holder가
+ * **살아있어도** 무조건 `writeFileSync`로 PID를 덮어써 동시 쓰기를 유발했다.
+ * 주석은 "보류"라고 되어있었지만 코드는 그렇지 않았다. 이제:
+ *   - holder가 살아있으면 `SettingsLockError`를 throw (쓰기 중단)
+ *   - holder가 죽었을 때만 stale recovery로 강제 획득
+ * 호출자는 락 실패 시 사용자 작업을 망치지 않도록 merge 결과를 버릴 책임을 진다.
+ */
 export function acquireLock(): void {
   const maxWaitMs = 3000;
   const intervalMs = 100;
@@ -56,17 +73,31 @@ export function acquireLock(): void {
   // 타임아웃: lock을 잡고 있는 프로세스가 살아있는지 확인
   const lockPid = readLockPid();
   if (lockPid !== null && isProcessAlive(lockPid)) {
-    log.debug(`lockfile 타임아웃 — pid ${lockPid} 프로세스가 아직 활성 상태, 대기 중 강제 획득 보류`);
-    // 프로세스가 살아있으면 그래도 강제 획득 (데드락 방지)
-  } else {
-    log.debug(`lockfile 타임아웃 — stale lock 감지 (pid: ${lockPid ?? 'unknown'}, 프로세스 종료됨)`);
+    log.warn(`lockfile 타임아웃 — pid ${lockPid} 프로세스가 활성 상태, 쓰기 중단`);
+    throw new SettingsLockError(
+      `Could not acquire settings.json lock: another forgen process (pid ${lockPid}) is actively writing`,
+    );
   }
+  log.debug(`lockfile stale lock 감지 — pid ${lockPid ?? 'unknown'} 종료됨, 회수`);
   fs.writeFileSync(SETTINGS_LOCK_PATH, String(process.pid));
 }
 
-/** lockfile 해제 */
+/**
+ * lockfile 해제.
+ *
+ * Audit fix #1 (2026-04-21): 이전에는 ownership 확인 없이 `rmSync`로
+ * 다른 프로세스의 lock도 지울 수 있었다 (cascade lock loss). 이제 lock
+ * 파일의 PID가 내 PID와 일치할 때만 삭제한다. 불일치 시 조용히 no-op —
+ * 정상 케이스에서는 내 PID만 존재하므로 영향 없음, 비정상 경합 시에는
+ * 다른 프로세스의 lock을 존중한다.
+ */
 export function releaseLock(): void {
   try {
+    const ownerPid = readLockPid();
+    if (ownerPid !== null && ownerPid !== process.pid) {
+      log.debug(`releaseLock: pid ${ownerPid} owns the lock, not me (${process.pid}) — no-op`);
+      return;
+    }
     fs.rmSync(SETTINGS_LOCK_PATH, { force: true });
   } catch { /* 이미 없으면 무시 */ }
 }
@@ -87,6 +118,35 @@ export function readSettings(): Record<string, unknown> {
   if (!fs.existsSync(SETTINGS_PATH)) return {};
   const raw = fs.readFileSync(SETTINGS_PATH, 'utf-8');
   return JSON.parse(raw); // 파싱 실패 시 throw → 호출자가 처리
+}
+
+/**
+ * settings.json 안전 읽기 + 손상본 보존.
+ *
+ * 2026-04-21 audit (finding #2, #10): `readSettingsWithBackup`가 parse
+ * 실패 시 silent `{}` 반환했고, 이후 merged write가 사용자 원본을 덮어써서
+ * 데이터 손실 경로가 됐다. 이제 파싱 실패 시 원본을 `.corrupt-<ts>` 로
+ * 별도 보존 후 예외를 던진다 — 호출자가 덮어쓰기를 중단할 수 있도록.
+ *
+ * Fallthrough: 파일 없음 → `{}`. IO 실패 → throw. Parse 실패 → 손상본
+ * 보존 후 throw.
+ */
+export function readSettingsSafely(): Record<string, unknown> {
+  fs.mkdirSync(CLAUDE_DIR, { recursive: true });
+  if (!fs.existsSync(SETTINGS_PATH)) return {};
+  const raw = fs.readFileSync(SETTINGS_PATH, 'utf-8');
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch (e) {
+    const corruptPath = `${SETTINGS_PATH}.corrupt-${Date.now()}`;
+    try {
+      fs.copyFileSync(SETTINGS_PATH, corruptPath);
+      log.warn(`settings.json parse 실패 — 손상본을 ${corruptPath}로 보존 후 쓰기 중단`);
+    } catch (copyErr) {
+      log.warn(`settings.json parse 실패 + 손상본 보존 실패 — 쓰기 중단`, copyErr);
+    }
+    throw e instanceof Error ? e : new Error(String(e));
+  }
 }
 
 /** settings.json 안전 쓰기. backup 생성 + lock + atomic write */
