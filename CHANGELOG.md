@@ -5,6 +5,106 @@ All notable changes to forgen will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-04-21
+
+### Security — Audit findings landed
+
+Independent read-only audit (docs/claude-audit-brief.md) surfaced 10 structural
+issues plus 2 follow-up findings. All 12 are fixed with invariant tests.
+
+**P0 — data loss / code injection**
+- **Settings parse-failure data loss** (#2, #10): `settings-injector.ts` and
+  `scripts/postinstall.js` no longer silently replace a malformed settings.json
+  with `{}`. New `readSettingsSafely()` preserves the corrupt original to
+  `settings.json.corrupt-<ts>` and throws; writers release the lock and abort.
+  postinstall settings + `~/.claude.json` now use tmp-file + rename atomic write.
+- **Code injection via node -e** (#5): `session-recovery.ts` no longer
+  interpolates a user-supplied sessionId into a `-e` template literal. A
+  dedicated runner at `dist/hooks/internal/run-lifecycle-check.js` reads the id
+  from argv — no shell, no eval surface.
+- **solution-outcomes race** (#9): all pending-state mutations are now serialised
+  under `withFileLockSync` + `atomicWriteJSON`. Concurrent inject / correction /
+  error hooks on the same session no longer lose or duplicate events.
+- **Archive path traversal** (follow-up #A): `compound-export.importKnowledge`
+  rejects entries whose resolved destination sits outside ME_DIR, including
+  sibling-directory prefix collisions (e.g. `../me-evil/…`).
+
+**P1 — lock semantics, trust, uninstall, injection precision**
+- **Settings-lock live-holder handling** (#1): acquireLock now throws
+  `SettingsLockError` on live-PID timeout instead of overwriting the lock;
+  releaseLock verifies ownership before deleting.
+- **Trust silent escalation** (#3): `preset-manager.computeEffectiveTrust`
+  returns a `Trust 상승` warning when runtime is more permissive than desired;
+  harness surfaces it to the user; fgx cautions `가드레일 우선`/`승인 완화`
+  profile users.
+- **Install/uninstall symmetry** (#7): `uninstall` now strips `FORGEN_*` env
+  keys (previously only `COMPOUND_*`) and recognises `forgen me` (previously
+  only `forgen status`) as the forgen-owned statusLine.
+- **Legacy profile guard** (#6): `loadProfile` runs `isV1Profile` and returns
+  null on legacy shapes so bootstrap re-runs cutover instead of typing stale
+  JSON as v1.
+- **secret-filter vendor tokens** (follow-up #B): GitHub PATs (ghp_/gho_/
+  ghs_/ghu_/ghr_), Google API keys (AIza…), and Slack tokens (xox[abpors]-…)
+  are now detected.
+
+**P2 — label truth, transcript attribution**
+- **permission-handler labels** (#4): `approve()`/`approveWithWarning()` never
+  set `permissionDecision: 'allow'`; they are pass-through. Log and API labels
+  renamed to `safe-pass-through` / `autopilot-warn-pass-through` /
+  `autopilot-pass-through` / `pass-through` so audit trails match reality.
+- **Transcript per-session attribution** (#8): `spawn.ts` snapshots existing
+  transcripts before launching claude and diffs after exit; concurrent sessions
+  in the same cwd no longer cross-attribute. Transcript reading switched to
+  streaming (`createReadStream` + `readline`).
+
+### Added — Data hygiene
+
+Field audit on a ~2-week-old install found 10,802 files in `~/.forgen/state/`
+across 12 filename prefixes, 4.3 MB `match-eval-log.jsonl`, and 80% of
+error-attribution events concentrated on 3 solutions injected at relevance
+0.15–0.21.
+
+- `forgen doctor --prune-state` (new `src/core/state-gc.ts`): removes session-
+  scoped files older than 7 days (checkpoint-, injection-cache-, modified-
+  files-, outcome-pending-, permissions-, skill-trigger-, tool-state-,
+  reminder-, context-, last-). Aggregate jsonl logs are preserved.
+- `solution-outcomes.attributeError` gates: match_score ≥ 0.3,
+  injection-lag ≤ 5 min, top-3 by relevance. Prevents blanket blaming of
+  every injected solution when a tool fails.
+- `solution-injector.MIN_INJECT_RELEVANCE = 0.3` + multi-tag precision gate
+  (`matchedIdentifiers ≥ 1 OR matchedTags ≥ 2`): the matcher remains
+  permissive for recall@5; only the injection step enforces the stricter
+  gate. Zero single-tag high-score injections observed in the field corpus
+  after landing.
+- `match-eval-log.jsonl` size-based rotation at 10 MB (one generation
+  retained).
+
+### Fixed — e2e test isolation
+
+Docker-spawned hooks in `tests/e2e/*.test.ts` were writing session state
+(`e2e-tool-chain`, `chain5-test`, etc.) into the developer's real
+`~/.forgen/state/`. Each e2e file now allocates a fresh `mkdtempSync` HOME
+and injects it into the spawn env; `afterAll` cleans up. Likewise
+`tests/hook-response-tracking.test.ts` now mocks `node:os` so the tracking
+log never lands outside `/tmp/`.
+
+### Fixed — Stale Docker verify checks
+
+`tests/e2e/docker/verify.sh` was asserting three skills that were deleted in
+commit f534227 (v0.3 quality refactor). Result goes from 62/4/6 to 63/0/6
+without touching runtime code.
+
+### Notes
+
+- All fixes confirmed via invariant tests (1732/1732 pass across 143 files),
+  7 real-world attack scenarios (injection, concurrent mutation, corrupt
+  settings, path traversal, prune, doctor smoke), and Linux-clean-environment
+  Docker verification.
+- Upgrade path from 0.3.1 verified (profile + solutions + non-forgen settings
+  byte-identical after upgrade).
+- Windows code paths exist but runtime validation is deferred to GH Actions
+  Windows runner — see P-D note in release audit.
+
 ## [0.3.1] - 2026-04-16
 
 ### Added — Self-Evolving Harness (inspired by Stanford meta-harness)
