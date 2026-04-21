@@ -17,13 +17,15 @@ describe('MIN_INJECT_RELEVANCE gate', () => {
     expect(MIN_INJECT_RELEVANCE).toBe(0.3);
   });
 
-  it('solution-injector.ts는 매칭 루프에서 MIN_INJECT_RELEVANCE로 필터한다', () => {
+  it('solution-injector.ts는 매칭 루프에서 relevance 게이트를 적용한다', () => {
     const src = fs.readFileSync(
       path.join(__dirname, '..', 'src', 'hooks', 'solution-injector.ts'),
       'utf-8',
     );
-    // 필터 라인이 실제로 존재하는지
-    expect(src).toMatch(/if\s*\(\s*sol\.relevance\s*<\s*MIN_INJECT_RELEVANCE\s*\)\s*continue/);
+    // 2026-04-21 champion-aware gate 이후: 직접 MIN_INJECT_RELEVANCE 비교 대신
+    // minRelevanceFor(name)으로 solution fitness state 기반 임계값 선택.
+    expect(src).toMatch(/if\s*\(\s*sol\.relevance\s*<\s*minRelevanceFor\(sol\.name\)\s*\)\s*continue/);
+    expect(src).toMatch(/MIN_INJECT_RELEVANCE_TRUSTED/);
   });
 
   it('solution-outcomes.ts의 MIN_ERROR_MATCH_SCORE와 정렬되어 있다', () => {

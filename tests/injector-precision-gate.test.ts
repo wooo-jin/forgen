@@ -27,8 +27,11 @@ describe('solution-injector precision gate (source invariant)', () => {
     expect(src).toMatch(/idMatches < 1 && tagMatches < 2/);
   });
 
-  it('MIN_INJECT_RELEVANCE 게이트는 여전히 유지 (이중 방어)', () => {
-    expect(src).toMatch(/sol\.relevance < MIN_INJECT_RELEVANCE/);
+  it('relevance 게이트는 여전히 유지 (이중 방어, champion-aware 버전)', () => {
+    // 2026-04-21: MIN_INJECT_RELEVANCE 직접 비교 → minRelevanceFor(name) 로 전환.
+    // fitness state (champion/active)면 0.25, 아니면 0.3 적용.
+    expect(src).toMatch(/sol\.relevance\s*<\s*minRelevanceFor\(sol\.name\)/);
+    expect(src).toMatch(/MIN_INJECT_RELEVANCE_TRUSTED/);
   });
 
   it('matcher의 permissive filter (1개 이상)는 유지 (bootstrap eval 호환)', () => {

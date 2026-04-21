@@ -39,17 +39,26 @@ interface HookInput {
 const MAX_SOLUTIONS_PER_SESSION = 10;
 
 /**
- * Minimum relevance required for a solution to be injected (2026-04-21).
+ * Minimum relevance thresholds by fitness state (2026-04-21 gate sweep).
  *
- * Matches below this threshold produced ~80% of all noisy error-outcome
- * events in the field audit — low-confidence injections get blanket error
- * attribution from unrelated tool failures, distorting fitness and feeding
- * the Phase 4 evolver garbage signal. This gate aligns with
- * MIN_ERROR_MATCH_SCORE in solution-outcomes.ts so the injection and
- * attribution invariants match: if we inject it, we are willing to let it
- * take error blame; if it is below this, we skip both.
+ * Motivation: a flat 0.3 floor gave 100% precision but 60% recall on a
+ * synthetic 40-query workload — 10 legitimate matches that scored
+ * 0.25-0.30 were blocked alongside noise. A pure 0.25 floor pushed recall
+ * to 84% but stripped noise protection for unverified solutions.
+ *
+ * Champion-aware solution: trust graduates more. Solutions whose fitness
+ * classification is `champion` or `active` (accept/correct ratio has
+ * survived ≥5 injections under the v0.3.2 gates) earn a lower 0.25
+ * injection floor; everything else stays at 0.3. On the sweep this hit
+ * precision 95.5% / recall 84% / off-topic specificity 100% — best
+ * trade in the variant set.
+ *
+ * If fitness data is unavailable (fresh install, empty outcomes/),
+ * every solution falls into the default 0.3 bucket — identical to the
+ * pre-0.3.2 gate. No cold-start regression.
  */
 export const MIN_INJECT_RELEVANCE = 0.3;
+export const MIN_INJECT_RELEVANCE_TRUSTED = 0.25;
 
 /** 세션별 이미 주입된 솔루션 추적 (중복 방지) */
 function getSessionCachePath(sessionId: string): string {
@@ -362,11 +371,30 @@ async function main(): Promise<void> {
   //   - identifier match ≥ 1 (함수/파일 이름 리터럴 매칭 — 강한 신호) OR
   //   - matched tags ≥ 2 (의도 교차점 2개 이상)
   // 둘 중 하나를 만족해야 주입.
+  // 2026-04-21 (champion-aware gate): fitness 상태가 champion/active인 솔루션은
+  // 검증된 신호가 있으므로 임계값 0.25로 완화. draft/underperform 은 0.3 그대로.
+  // Fitness 데이터가 없으면 전체 default 0.3 (cold-start 회귀 없음).
+  // Gate sweep 결과: precision 95.5% / recall 84% / off-topic specificity 100%.
+  const fitnessStateMap = new Map<string, string>();
+  try {
+    const { computeFitness } = await import('../engine/solution-fitness.js');
+    for (const r of computeFitness()) {
+      fitnessStateMap.set(r.solution, r.state);
+    }
+  } catch (e) { log.debug('fitness state load 실패 — default 0.3 적용', e); }
+
+  function minRelevanceFor(name: string): number {
+    const state = fitnessStateMap.get(name);
+    return (state === 'champion' || state === 'active')
+      ? MIN_INJECT_RELEVANCE_TRUSTED
+      : MIN_INJECT_RELEVANCE;
+  }
+
   let experimentCount = 0;
   const toInject: typeof matches = [];
   for (const sol of matches) {
     if (injected.has(sol.name)) continue;
-    if (sol.relevance < MIN_INJECT_RELEVANCE) continue;
+    if (sol.relevance < minRelevanceFor(sol.name)) continue;
     const idMatches = sol.matchedIdentifiers?.length ?? 0;
     const tagMatches = Math.max(0, sol.matchedTags.length - idMatches);
     if (idMatches < 1 && tagMatches < 2) continue;
