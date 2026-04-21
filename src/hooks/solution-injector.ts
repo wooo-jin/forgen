@@ -352,11 +352,24 @@ async function main(): Promise<void> {
   // 어댑티브 프롬프트당 솔루션 수 제한, experiment는 1개 제한.
   // 2026-04-21: MIN_INJECT_RELEVANCE 게이트 추가. 과거 0.15~0.21짜리 저신뢰 매칭이
   // 거의 모든 세션에 주입되어 error 귀속의 80%를 차지했음.
+  //
+  // 2026-04-21 (precision audit follow-up): 단일 태그 매칭은 주입 차단.
+  // ~/.forgen/state/match-eval-log.jsonl 7406 queries 분석 결과, top-1의
+  // 33.5%가 "forgen", "type", "file" 같은 공통 단어 한 개로 매칭되어 희귀
+  // 태그 BM25 boost로 0.5~0.8 점수를 받고 사용자 컨텍스트를 오염시켰다.
+  // Matcher는 top-5 recall 유지를 위해 permissive 하게 두고 (bootstrap eval
+  // 호환), 주입 직전에만 엄격히:
+  //   - identifier match ≥ 1 (함수/파일 이름 리터럴 매칭 — 강한 신호) OR
+  //   - matched tags ≥ 2 (의도 교차점 2개 이상)
+  // 둘 중 하나를 만족해야 주입.
   let experimentCount = 0;
   const toInject: typeof matches = [];
   for (const sol of matches) {
     if (injected.has(sol.name)) continue;
     if (sol.relevance < MIN_INJECT_RELEVANCE) continue;
+    const idMatches = sol.matchedIdentifiers?.length ?? 0;
+    const tagMatches = Math.max(0, sol.matchedTags.length - idMatches);
+    if (idMatches < 1 && tagMatches < 2) continue;
     if (sol.status === 'experiment') {
       if (experimentCount >= 1) continue;
       experimentCount++;

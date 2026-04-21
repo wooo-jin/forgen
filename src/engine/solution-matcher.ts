@@ -167,6 +167,14 @@ export interface SolutionMatch {
   tags: string[];
   identifiers: string[];
   matchedTags: string[];
+  /**
+   * Identifier substrings (function/file names) that appeared literally in the
+   * prompt. Added 2026-04-21 so solution-injector can enforce a precision gate
+   * distinguishing "user typed a specific identifier" (strong signal, survives
+   * 1-tag overlap) from "only 1 tag happens to overlap" (often noise — common
+   * nouns like 'type', 'file', 'forgen' trigger rare-tag BM25 boost).
+   */
+  matchedIdentifiers: string[];
 }
 
 /** Internal loaded solution with scope from directory config */
@@ -1124,5 +1132,6 @@ export function matchSolutions(prompt: string, scope: ScopeInfo, cwd: string): S
     tags: c.solution.tags,
     identifiers: c.solution.identifiers,
     matchedTags: [...c.matchedTags, ...c.matchedIdentifiers],
+    matchedIdentifiers: c.matchedIdentifiers,
   }));
 }
