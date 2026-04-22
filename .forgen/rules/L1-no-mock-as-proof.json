@@ -1,0 +1,29 @@
+{
+  "rule_id": "L1-no-mock-as-proof",
+  "category": "quality",
+  "scope": "me",
+  "trigger": "mock-validation-claim",
+  "policy": "mock/stub/fake 기반 검증으로 완료 선언 금지. 실제 실행 기반 증거만 유효 (프로덕션 코드 맥락 한정, 테스트 파일 내 vi.mock 은 제외).",
+  "strength": "hard",
+  "source": "explicit_correction",
+  "status": "active",
+  "evidence_refs": [],
+  "render_key": "quality_safety.l1-no-mock-as-proof",
+  "created_at": "2026-04-22T00:00:00.000Z",
+  "updated_at": "2026-04-22T00:00:00.000Z",
+  "enforce_via": [
+    {
+      "mech": "B",
+      "hook": "Stop",
+      "verifier": {
+        "kind": "self_check_prompt",
+        "params": {
+          "question": "직전 응답에서 mock/stub/fake 기반으로 검증 완료를 주장했는가? forgen L1 규칙은 실제 실행 증거 없는 완료 선언을 금지한다. mock 에 의존했다면 명시적으로 인정하고 live 실행으로 재검증하라."
+        }
+      },
+      "trigger_keywords_regex": "(mock|stub|fake)",
+      "trigger_exclude_regex": "(테스트|test|vi\\.mock|jest\\.mock|spec\\.|tests/)",
+      "system_tag": "rule:L1-no-mock-as-proof"
+    }
+  ]
+}

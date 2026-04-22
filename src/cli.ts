@@ -354,7 +354,10 @@ function printHelp() {
     forgen mcp                      MCP server management
     forgen skill promote|list       Skill management
     forgen notepad show|add|clear   Session notepad
-    forgen doctor                   System diagnostics
+    forgen doctor [--prune-state]   System diagnostics (+ daily T4 decay on prune)
+    forgen classify-enforce         Auto-propose enforce_via for rules (ADR-001 migration)
+    forgen rule-meta-scan           Scan drift.jsonl → Mech demotion candidates (ADR-002 Meta)
+    forgen lifecycle-scan           Run all rule lifecycle triggers T1~T5 + Meta (ADR-002)
     forgen uninstall                Remove forgen
 
   Harness mode (default):

@@ -1,10 +1,11 @@
 # ADR-002: Rule Lifecycle Engine (T1~T5 + Meta 자기참조적 재분류)
 
-**Status**: Proposed
+**Status**: Accepted (2026-04-22)
 **Date**: 2026-04-22
 **Reversibility**: Type 1 (rule 파일의 lifecycle 상태가 on-disk로 지속됨)
 **Related Interview**: Deep Interview v0.4.0 Trust Restoration (Round 9~10)
 **Depends on**: ADR-001 (`enforce_via` 필드가 Meta 재분류의 대상)
+**Implementation evidence**: `src/engine/lifecycle/` (orchestrator + triggers T1~T5 + Meta 양방향) + runtime 통합 (T1: evidence-store.appendEvidence, T3: post-tool-use bypass-detector, T4: state-gc.runDailyT4Decay, T5: rule-store.appendRule, Meta: drift.jsonl → meta-reclassifier). 단위 + 통합 테스트 74건, 전체 회귀 1888/1888 pass.
 
 ## Context
 

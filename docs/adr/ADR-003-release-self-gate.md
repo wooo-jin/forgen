@@ -1,10 +1,11 @@
 # ADR-003: 릴리즈 Self-Gate — forgen이 자기 자신의 L1 규칙을 위반하지 않음을 CI에서 자동 검증
 
-**Status**: Proposed
+**Status**: Accepted (2026-04-22)
 **Date**: 2026-04-22
 **Reversibility**: Type 2 (CI 단계는 비교적 가역 — 스크립트 교체만으로 되돌릴 수 있음)
 **Related Interview**: Deep Interview v0.4.0 Trust Restoration (Round 10 — "신뢰도 회복 미션")
 **Depends on**: ADR-001 (enforce_via), ADR-002 (lifecycle state 소비)
+**Implementation evidence**: `scripts/self-gate.cjs` (static) + `scripts/self-gate-runtime.cjs` (6 hook scenarios) + `scripts/self-gate-release.cjs` (tag-only) + `.github/workflows/self-gate.yml`. 로컬 3단 체인 그린.
 
 ## Context
 

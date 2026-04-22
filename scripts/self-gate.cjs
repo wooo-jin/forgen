@@ -40,7 +40,9 @@ function walk(dir, out = []) {
 function checkMockInProduction() {
   if (!fs.existsSync(SRC_DIR)) return;
   const files = walk(SRC_DIR).filter((f) => !/\.(test|spec)\.ts$/.test(f));
-  const MOCK_RE = /\b(vi\.mock|jest\.mock|sinon\.(stub|mock|spy)|\/\*\s*@mock)\b/;
+  // 실제 호출 형태만 매칭 — 주석/문자열 안의 단순 멘션은 통과.
+  // 뒤이어 여는 괄호가 있을 때 호출로 간주.
+  const MOCK_RE = /\b(vi\.mock|jest\.mock|sinon\.(stub|mock|spy))\s*\(/;
   const hits = [];
   for (const f of files) {
     try {

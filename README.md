@@ -478,6 +478,7 @@ forgen skill list               # List promoted skills
 ```bash
 forgen init                     # Initialize project
 forgen doctor                   # System diagnostics (10 categories + harness maturity)
+forgen doctor --prune-state     # Daily hygiene: state GC + T4 rule decay (90d idle → retire)
 forgen dashboard                # Knowledge overview (6 sections)
 forgen config hooks             # View hook status + context budget
 forgen config hooks --regenerate # Regenerate hooks
@@ -487,6 +488,37 @@ forgen mcp templates            # Show available templates
 forgen notepad show             # View session notepad
 forgen uninstall                # Remove forgen cleanly
 ```
+
+### Rule lifecycle (v0.4.0, ADR-001/002)
+
+```bash
+forgen classify-enforce          # Preview enforce_via proposals for existing rules
+forgen classify-enforce --apply  # Save proposed enforce_via (skips already-set rules)
+forgen classify-enforce --apply --force  # Overwrite existing enforce_via
+forgen rule-meta-scan            # Preview Mech demotion candidates (drift.jsonl → A→B→C)
+forgen rule-meta-scan --apply    # Persist demotions + meta_promotions history
+forgen lifecycle-scan            # Preview T1~T5 + Meta (both directions) triggers
+forgen lifecycle-scan --apply    # Apply all lifecycle state transitions
+```
+
+Rule enforcement is 3-axis (ADR-001):
+- **Mech-A** (hook-BLOCK) — mechanical checks (`rm -rf`, artifact presence). Violation blocks immediately.
+- **Mech-B** (self-check) — natural-language rules. Stop hook feeds self-check question back to Claude via `decision: "block"` + `reason`. Zero extra API cost.
+- **Mech-C** (drift-measure) — long-term bias tracking only.
+
+Rule lifecycle (ADR-002): rules auto-flag / suppress / retire / merge / supersede based on T1~T5 + Meta signals. Details in [docs/adr/ADR-002-rule-lifecycle-engine.md](docs/adr/ADR-002-rule-lifecycle-engine.md).
+
+### Release self-gate (v0.4.0, ADR-003)
+
+Three CI gates prove forgen does not violate its own L1 rules before release:
+
+```bash
+node scripts/self-gate.cjs          # Static: mock-in-prod, secrets, enforce_via, release-artifact
+node scripts/self-gate-runtime.cjs  # Runtime smoke: 6 hook scenarios
+node scripts/self-gate-release.cjs  # Tag-only: version/tag/CHANGELOG/dist/e2e-report consistency
+```
+
+Triggered by `.github/workflows/self-gate.yml` on push main / PR main / tag v*. Dogfood opt-in: see [.forgen/README.md](.forgen/README.md).
 
 ### MCP tools (available to Claude during sessions)
 
