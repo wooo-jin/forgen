@@ -220,6 +220,22 @@ const commands: Command[] = [
       await handleInspect(['violations', '--last', '1']);
     },
   },
+  {
+    name: 'suppress-rule',
+    description: 'Disable a rule by id/prefix (status→suppressed). Hard rules refused. (R7-U2)',
+    handler: async (args) => {
+      const { handleSuppressRule } = await import('./engine/rule-toggle-cli.js');
+      await handleSuppressRule(args);
+    },
+  },
+  {
+    name: 'activate-rule',
+    description: 'Re-activate a suppressed rule by id/prefix. (R7-U2)',
+    handler: async (args) => {
+      const { handleActivateRule } = await import('./engine/rule-toggle-cli.js');
+      await handleActivateRule(args);
+    },
+  },
 ];
 
 /** 최소 편집 거리 (유사 명령 제안용) */

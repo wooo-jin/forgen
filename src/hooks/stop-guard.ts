@@ -401,6 +401,18 @@ export async function main(): Promise<void> {
 
     const { hit, reason } = result;
 
+    // R7-U1: FORGEN_USER_CONFIRMED=1 으로 사용자가 명시적 우회 → audit 기록 후 approve.
+    // pre-tool-use 와 동일한 탈출 경로 일관성 확보.
+    if (process.env.FORGEN_USER_CONFIRMED === '1') {
+      recordViolation({
+        rule_id: hit.id, session_id: sessionId, source: 'stop-guard',
+        kind: 'correction',
+        message_preview: `[FORGEN_USER_CONFIRMED=1 bypass] ${lastMessage.slice(0, 100)}`,
+      });
+      console.log(approve());
+      return;
+    }
+
     // T2 signal: block 은 rule 위반 증거 — violations.jsonl 에 기록.
     // (stuck-loop force approve 는 아래에서 처리되므로 실제 block 시에만 기록)
     recordViolation({
@@ -411,12 +423,11 @@ export async function main(): Promise<void> {
       message_preview: lastMessage.slice(0, 120),
     });
 
-    // G8 + R4-UX1: 브랜드 prefix + override 힌트.
-    // 사용자가 Claude 응답 중 이 reason 을 볼 때 (a) forgen 이 막았음을, (b) 어느 rule 이 원인인지,
-    // (c) 어떻게 탈출하는지 한눈에 알 수 있도록.
+    // G8 + R4-UX1 + R7-U1/U2: 브랜드 prefix + 사람-읽기 동사 기반 override 힌트.
+    // pre-tool-use 와 일관된 FORGEN_USER_CONFIRMED=1 탈출구 + 영구 비활성화 CLI 노출.
     const reasonWithHint = `[forgen:stop-guard/${hit.id.slice(0, 8)}] ${reason}
 
-(disable this rule: edit ~/.forgen/me/rules/${hit.id}.json status→'suppressed'. Adjust hook level: \`forgen config hooks\`.)`;
+(Override this turn: set FORGEN_USER_CONFIRMED=1 (audited). Disable rule permanently: \`forgen suppress-rule ${hit.id}\`. See recent blocks: \`forgen last-block\`.)`;
 
     const count = incrementBlockCount(sessionId, hit.id);
     const threshold = getStuckLoopThreshold();

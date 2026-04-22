@@ -141,17 +141,25 @@ export async function handleInspect(args: string[]): Promise<void> {
       }
     }
 
-    console.log('\n  Recent:');
+    // R7-U3: rule_id 전체 표시 + kind + source 분리 + resolve hint footer.
+    console.log('\n  Recent (time — rule_id — kind@source — preview):');
     for (const line of tail) {
       try {
         const e = JSON.parse(line);
         const when = (e.at ?? '').slice(0, 19);
-        const rid = (e.rule_id ?? '-').slice(0, 10);
-        const kind = e.kind ?? e.source ?? '-';
+        const rid = (e.rule_id ?? '-').slice(0, 24); // 8자→24자 (prefix match 가능 길이)
+        const kind = (e.kind ?? '-');
+        const source = (e.source ?? '-');
         const preview = (e.message_preview ?? e.reason_preview ?? e.pattern_preview ?? '').slice(0, 60);
-        console.log(`    ${when}  ${rid.padEnd(10)}  ${String(kind).padEnd(12)}  ${preview}`);
+        console.log(`    ${when}  ${rid.padEnd(24)}  ${String(kind).padEnd(10)}@${String(source).padEnd(14)}  ${preview}`);
       } catch { /* skip */ }
     }
+    console.log('');
+    // R7-U3 footer: resolve hint
+    console.log('  Resolve:');
+    console.log('    Disable a rule:   forgen suppress-rule <rule_id>');
+    console.log('    Re-enable:        forgen activate-rule <rule_id>');
+    console.log('    Temp bypass turn: set FORGEN_USER_CONFIRMED=1 (audited)');
     console.log('');
     return;
   }
