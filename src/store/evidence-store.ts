@@ -12,6 +12,7 @@ import { ME_BEHAVIOR } from '../core/paths.js';
 import { atomicWriteJSON, safeReadJSON } from '../hooks/shared/atomic-write.js';
 import type { Evidence, EvidenceType, RuleCategory } from './types.js';
 import { createRule, saveRule, loadActiveRules } from './rule-store.js';
+import { classify, applyProposal } from '../engine/enforce-classifier.js';
 import { detect as detectT1 } from '../engine/lifecycle/trigger-t1-correction.js';
 import { foldEvents } from '../engine/lifecycle/orchestrator.js';
 import { appendLifecycleEvents } from '../engine/lifecycle/meta-reclassifier.js';
@@ -155,7 +156,7 @@ export function promoteSessionCandidates(sessionId: string): number {
       : axisHint === 'autonomy' ? 'autonomy'
       : 'workflow';
 
-    const rule = createRule({
+    let rule = createRule({
       category,
       scope: 'me',
       trigger: target,
@@ -165,6 +166,11 @@ export function promoteSessionCandidates(sessionId: string): number {
       evidence_refs: [candidate.evidence_id],
       render_key: renderKey,
     });
+    // ADR-001 auto-classify — 승격되는 rule 에도 enforce_via 자동 주입.
+    try {
+      const proposal = classify(rule);
+      rule = applyProposal(rule, proposal);
+    } catch { /* fail-open */ }
     saveRule(rule);
     existingRenderKeys.add(renderKey);
     promoted++;
