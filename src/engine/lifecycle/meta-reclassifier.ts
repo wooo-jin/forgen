@@ -29,6 +29,18 @@ const LIFECYCLE_DIR = path.join(os.homedir(), '.forgen', 'state', 'lifecycle');
 
 const DEFAULT_WINDOW_DAYS = 7;
 const DEFAULT_THRESHOLD = 3;
+/** R8-A1: Meta 재분류 쿨다운 (일). 최근 이 기간 내 변경된 rule 은 다시 재분류 금지. */
+const DEFAULT_COOLDOWN_DAYS = 30;
+
+/** R8-A1: rule 이 최근 쿨다운 내에 mech 변경됐는지 판정. */
+function isRecentlyClassified(rule: Rule, nowMs: number, cooldownMs: number): boolean {
+  const promotions = rule.lifecycle?.meta_promotions ?? [];
+  if (promotions.length === 0) return false;
+  const lastAt = promotions[promotions.length - 1].at;
+  const lastMs = Date.parse(lastAt);
+  if (!Number.isFinite(lastMs)) return false;
+  return nowMs - lastMs < cooldownMs;
+}
 
 export interface DriftEntry {
   at: string;
@@ -72,6 +84,7 @@ export function scanDriftForDemotion(options: {
   drift?: DriftEntry[];
   windowDays?: number;
   threshold?: number;
+  cooldownDays?: number;
   now?: number;
 } = { rules: [] }): DemotionCandidate[] {
   const windowDays = options.windowDays ?? DEFAULT_WINDOW_DAYS;
@@ -91,12 +104,17 @@ export function scanDriftForDemotion(options: {
   }
 
   const candidates: DemotionCandidate[] = [];
+  // R8-A1: Meta oscillation cooldown — 최근 N일 내 mech 변경된 rule 은 재분류 skip.
+  // architect 예측 "A↔B ping-pong" 차단. 기본 30일.
+  const cooldownMs = (options.cooldownDays ?? DEFAULT_COOLDOWN_DAYS) * 24 * 60 * 60 * 1000;
   for (const [ruleId, entries] of byRule.entries()) {
     if (entries.length < threshold) continue;
     // M fix: exact match — 이전에는 startsWith 로 인해 "L1" prefix 로 여러 L1-* rule 이 교차 오염됐음.
     const rule = options.rules.find((r) => r.rule_id === ruleId);
     // C2: hard strength rule 은 Meta demote 대상에서 제외 (ADR-002 불변 원칙).
     if (rule?.strength === 'hard') continue;
+    // R8-A1: cooldown 체크
+    if (rule && isRecentlyClassified(rule, now, cooldownMs)) continue;
     const currentMechs = (rule?.enforce_via ?? [])
       .map((s) => s.mech)
       .filter((m, i, arr) => arr.indexOf(m) === i);
@@ -141,15 +159,20 @@ export interface PromotionCandidate {
 export function scanSignalsForPromotion(options: {
   rules: Rule[];
   rolling_min_injects?: number;
+  cooldownDays?: number;
   ts?: number;
   signals: Map<string, import('./types.js').RuleSignals>;
 }): PromotionCandidate[] {
   const minInjects = options.rolling_min_injects ?? 20;
   const out: PromotionCandidate[] = [];
+  // R8-A1: promote 도 cooldown 적용. architect 예측대로 promote → demote → promote ping-pong 차단.
+  const cooldownMs = (options.cooldownDays ?? DEFAULT_COOLDOWN_DAYS) * 24 * 60 * 60 * 1000;
+  const nowMs = options.ts ?? Date.now();
   for (const rule of options.rules) {
     if (rule.status !== 'active') continue;
     // C2: hard rule 은 promote 도 불변 (이미 최강이거나 사용자 의도적 고정).
     if (rule.strength === 'hard') continue;
+    if (isRecentlyClassified(rule, nowMs, cooldownMs)) continue;
     const s = options.signals.get(rule.rule_id);
     if (!s) continue;
     if (s.injects_rolling_n < minInjects) continue;

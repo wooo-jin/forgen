@@ -128,6 +128,35 @@ describe('Hard rule immutability (C2)', () => {
     expect(events).toHaveLength(0);
   });
 
+  it('R8-A1: 최근 30일 내 mech 변경된 rule 은 demote 후보 아님 (oscillation cooldown)', () => {
+    const now = Date.parse('2026-04-22T00:00:00Z');
+    const recentlyDemoted = hardRule({
+      strength: 'strong',
+      lifecycle: {
+        phase: 'active',
+        first_active_at: '',
+        inject_count: 10, accept_count: 0, violation_count: 0, bypass_count: 0,
+        conflict_refs: [],
+        // 7일 전에 이미 demoted — cooldown(30d) 내
+        meta_promotions: [{
+          at: new Date(now - 7 * 24 * 3600_000).toISOString(),
+          from_mech: 'A', to_mech: 'B',
+          reason: 'stuck_loop_force_approve',
+          trigger_stats: { window_n: 4 },
+        }],
+      },
+    });
+    const drift = Array.from({ length: 5 }, (_, i) => ({
+      at: new Date(now - (i + 1) * 24 * 3600_000 + 3600_000).toISOString(),
+      kind: 'stuck_loop_force_approve',
+      session_id: `s${i}`,
+      rule_id: recentlyDemoted.rule_id,
+      count: 4,
+    }));
+    const candidates = scanDriftForDemotion({ rules: [recentlyDemoted], drift, now });
+    expect(candidates).toHaveLength(0); // cooldown
+  });
+
   it('비-hard rule 에는 기존 동작 유지 (회귀 없음)', () => {
     const strong = hardRule({
       strength: 'strong', // hard 아님
