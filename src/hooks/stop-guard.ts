@@ -257,8 +257,25 @@ function artifactFresh(relOrAbs: string, maxAgeS: number): boolean {
   const inside = allowedRoots.some((root) => resolved === root || resolved.startsWith(root + path.sep));
   if (!inside) return false; // containment violation → 존재 확인 자체를 거부
 
+  // R4-B4: symlink 탈출 방어 — path.resolve 만으로는 symlink 를 해소하지 않으므로
+  // ~/.forgen/state/probe → /etc/shadow 심볼릭 링크로 bounded 영역 밖 파일의 존재/mtime 을
+  // 탐지하는 reconnaissance 가 가능했다. realpathSync 로 실경로 해소 후 재검사.
+  // allowed root 자체도 realpath 화 (macOS /tmp → /private/tmp 같은 플랫폼 symlink 대응).
+  let realPath: string;
+  let realRoots: string[];
   try {
-    const st = fs.statSync(resolved);
+    realPath = fs.realpathSync(resolved);
+    realRoots = allowedRoots.map((r) => {
+      try { return fs.realpathSync(r); } catch { return r; }
+    });
+  } catch {
+    return false; // 존재 안 함 → not fresh
+  }
+  const realInside = realRoots.some((root) => realPath === root || realPath.startsWith(root + path.sep));
+  if (!realInside) return false; // symlink 가 루트 밖을 가리킴 → reject
+
+  try {
+    const st = fs.lstatSync(realPath);
     if (maxAgeS <= 0) return true;
     const ageMs = Date.now() - st.mtimeMs;
     return ageMs <= maxAgeS * 1000;
@@ -398,11 +415,12 @@ export async function main(): Promise<void> {
       message_preview: lastMessage.slice(0, 120),
     });
 
-    // G8: block 메시지에 override/비활성화 탈출구 힌트를 한 줄 추가.
-    // 2AM 디버깅 사용자가 JSON hook-config.json 을 못 찾아서 forgen uninstall 하는 상황 방지.
-    const reasonWithHint = `${reason}
+    // G8 + R4-UX1: 브랜드 prefix + override 힌트.
+    // 사용자가 Claude 응답 중 이 reason 을 볼 때 (a) forgen 이 막았음을, (b) 어느 rule 이 원인인지,
+    // (c) 어떻게 탈출하는지 한눈에 알 수 있도록.
+    const reasonWithHint = `[forgen:stop-guard/${hit.id.slice(0, 8)}] ${reason}
 
-(rule:${hit.id.slice(0, 8)} — to disable this rule: edit ~/.forgen/me/rules/${hit.id}.json status→'suppressed', or \`forgen config hooks\` to adjust hook-level.)`;
+(disable this rule: edit ~/.forgen/me/rules/${hit.id}.json status→'suppressed'. Adjust hook level: \`forgen config hooks\`.)`;
 
     const count = incrementBlockCount(sessionId, hit.id);
     const threshold = getStuckLoopThreshold();

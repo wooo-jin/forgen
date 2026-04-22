@@ -372,7 +372,9 @@ export async function runMetaScan(args: string[]): Promise<void> {
     console.log(`  ⚠ Candidate: rule=${c.rule_id} events=${c.event_count} sessions=${c.sessions.length} mechs=[${c.current_mechs.join(',')}]`);
     console.log(`    window: ${c.first_at} → ${c.last_at}`);
 
-    const rule = rules.find((r) => r.rule_id === c.rule_id || r.rule_id.startsWith(c.rule_id));
+    // R4-B1: exact match only. 이전 `|| startsWith` 는 "L1-async" drift 로 "L1-async-await"
+    // 까지 demote 시키는 교차 오염을 야기. scanDriftForDemotion 은 이미 exact match.
+    const rule = rules.find((r) => r.rule_id === c.rule_id);
     if (!rule) {
       console.log('    (rule not found in store — likely spike scenarios.json; skip)');
       continue;

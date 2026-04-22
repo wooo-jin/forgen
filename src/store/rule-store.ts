@@ -173,11 +173,17 @@ export function markRulesInjected(ruleIds: string[], nowIso: string = new Date()
       conflict_refs: [],
       meta_promotions: [],
     };
+    // R4-B2: 파일 corruption 으로 음수/NaN 가 들어와도 T2 violation_rate=1 로 잘못된 suppress 를
+    // 유발하지 않도록 하한 0 으로 정상화.
+    const safeCount = (n: unknown): number => (typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : 0);
     const updated: Rule = {
       ...rule,
       lifecycle: {
         ...lifecycle,
-        inject_count: lifecycle.inject_count + 1,
+        inject_count: safeCount(lifecycle.inject_count) + 1,
+        accept_count: safeCount(lifecycle.accept_count),
+        violation_count: safeCount(lifecycle.violation_count),
+        bypass_count: safeCount(lifecycle.bypass_count),
         last_inject_at: nowIso,
       },
     };
