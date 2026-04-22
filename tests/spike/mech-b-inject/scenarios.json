@@ -24,7 +24,8 @@
       "mech": "B",
       "hook": "Stop",
       "trigger": {
-        "response_keywords_regex": "완료|완성|done|ready|shipped|LGTM|finished"
+        "response_keywords_regex": "(완료했|완성됐|완성되|완성했|done\\.|ready\\.|shipped\\.|LGTM|finished\\.)",
+        "context_exclude_regex": "(취소|철회|없음|없습니다|않았|하지\\s*않|아닙니다|not\\s*yet|no\\s*longer|retract|withdraw|아직\\s*(안|아)|stuck-loop|force\\s*approve|block\\s*hook|meta|자가철회|자기인용|spike|PR 없|ADR|변경\\s*없|아직\\s*구현)"
       },
       "verifier": {
         "kind": "self_check_prompt",

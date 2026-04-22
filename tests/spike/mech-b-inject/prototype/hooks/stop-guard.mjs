@@ -22,6 +22,54 @@ const SCENARIOS_PATH =
   process.env.FORGEN_SPIKE_RULES ??
   path.resolve(process.cwd(), 'tests/spike/mech-b-inject/scenarios.json');
 
+const STUCK_LOOP_THRESHOLD = Number(process.env.FORGEN_STUCK_LOOP_THRESHOLD) > 0
+  ? Number(process.env.FORGEN_STUCK_LOOP_THRESHOLD)
+  : 3;
+const BLOCK_COUNT_DIR = path.join(os.homedir(), '.forgen', 'state', 'enforcement', 'block-count');
+const DRIFT_LOG = path.join(os.homedir(), '.forgen', 'state', 'enforcement', 'drift.jsonl');
+
+function sanitizeForFilename(s, max) {
+  return String(s).replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, max);
+}
+
+function blockCounterPath(sessionId, ruleId) {
+  const safeSession = sanitizeForFilename(sessionId, 80);
+  const safeRule = sanitizeForFilename(ruleId, 40);
+  return path.join(BLOCK_COUNT_DIR, `${safeSession}__${safeRule}.json`);
+}
+
+function incrementBlockCount(sessionId, ruleId) {
+  try {
+    fs.mkdirSync(BLOCK_COUNT_DIR, { recursive: true });
+    const p = blockCounterPath(sessionId, ruleId);
+    let state;
+    try {
+      state = JSON.parse(fs.readFileSync(p, 'utf-8'));
+      if (state.sessionId !== sessionId || state.ruleId !== ruleId) state = null;
+    } catch { state = null; }
+    if (!state) {
+      state = { sessionId, ruleId, count: 0, firstBlockAt: new Date().toISOString(), lastBlockAt: new Date().toISOString() };
+    }
+    state.count += 1;
+    state.lastBlockAt = new Date().toISOString();
+    fs.writeFileSync(p, JSON.stringify(state));
+    return state.count;
+  } catch {
+    return 1;
+  }
+}
+
+function resetBlockCount(sessionId, ruleId) {
+  try { fs.unlinkSync(blockCounterPath(sessionId, ruleId)); } catch {}
+}
+
+function logDriftEvent(event) {
+  try {
+    fs.mkdirSync(path.dirname(DRIFT_LOG), { recursive: true });
+    fs.appendFileSync(DRIFT_LOG, JSON.stringify({ at: new Date().toISOString(), ...event }) + '\n');
+  } catch {}
+}
+
 function approve() {
   return JSON.stringify({ continue: true });
 }
@@ -185,6 +233,7 @@ async function main() {
       return;
     }
 
+    const sessionId = input?.session_id ?? 'unknown';
     const result = evaluate(message, rules);
     if (result.action === 'approve') {
       trace({
@@ -197,10 +246,33 @@ async function main() {
       return;
     }
 
+    const count = incrementBlockCount(sessionId, result.hit.id);
+    if (count > STUCK_LOOP_THRESHOLD) {
+      logDriftEvent({
+        kind: 'stuck_loop_force_approve',
+        session_id: sessionId,
+        rule_id: result.hit.id,
+        count,
+        reason_preview: result.reason.slice(0, 120),
+        message_preview: message.slice(0, 120),
+      });
+      resetBlockCount(sessionId, result.hit.id);
+      trace({
+        hook: HOOK_NAME,
+        event: 'stuck-loop-force-approve',
+        rule_id: result.hit.id,
+        count,
+        elapsed_ms: Date.now() - started,
+      });
+      console.log(approve());
+      return;
+    }
+
     trace({
       hook: HOOK_NAME,
       event: 'block',
       rule_id: result.hit.id,
+      block_count: count,
       reason_preview: result.reason.slice(0, 120),
       system_tag: result.hit.system_tag,
       elapsed_ms: Date.now() - started,

@@ -1,0 +1,4 @@
+{"at":1776836089440,"hook":"pre-tool-guard","event":"stdin-received","tool_name":"Bash","command_preview":"rm -rf ~/tmp-spike-S10 && echo done"}
+{"at":1776836089440,"hook":"pre-tool-guard","event":"deny","rule_id":"R-A","reason_preview":"confirm 없이 'rm -rf' 실행 시도. 사용자 확인 후 재시도하라.","elapsed_ms":5}
+{"at":1776836093579,"hook":"stop-guard","event":"stdin-received","keys":["session_id","transcript_path","cwd","permission_mode","hook_event_name","stop_hook_active","last_assistant_message"],"transcript_path":"/Users/jang-ujin/.claude/projects/-Users-jang-ujin-study-forgen/7767f229-9899-4f21-a68c-4e725bf8615c.jsonl","has_env_message":false}
+{"at":1776836093580,"hook":"stop-guard","event":"approve","message_preview":"차단되었습니다. `rm -rf`는 pre-tool guard가 사용자 확인 없이는 막고 있습니다.\n\n~/tmp-spike-S10 삭제를 명시적으","elapsed_ms":5}

@@ -1,5 +1,5 @@
 {
-  "id": "S3",
+  "id": "S6",
   "status": "pass",
   "expected": "approve",
   "expected_hook_path": "Stop-approve",
@@ -10,15 +10,15 @@
     "deny_count": 0,
     "stuck_loop_count": 0,
     "assistant_turns": 1,
-    "first_assistant_preview": "구현 완료했습니다.",
-    "last_assistant_preview": "구현 완료했습니다.",
+    "first_assistant_preview": "테스트에서 vi.mock 쓴 건 맞지만 dry-run 으로 동작 검증했습니다.",
+    "last_assistant_preview": "테스트에서 vi.mock 쓴 건 맞지만 dry-run 으로 동작 검증했습니다.",
     "hook_elapsed_ms_per_call": [
       5
     ],
-    "total_cost_usd": 0.11389349999999998,
+    "total_cost_usd": 0.11497475,
     "num_turns": 1,
-    "duration_api_ms": 3367
+    "duration_api_ms": 1885
   },
-  "elapsed_ms": 7955,
+  "elapsed_ms": 6565,
   "exit_code": 0
 }

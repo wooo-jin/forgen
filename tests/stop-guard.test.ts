@@ -4,12 +4,29 @@
  * evaluateStop 는 pure — stdin/IO 없이 메시지와 rules 로 판정.
  * stdin e2e 는 별도로 spawn 으로 실행.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { evaluateStop } from '../src/hooks/stop-guard.js';
+
+// Sandbox homedir — stuck-loop guard writes to ~/.forgen/state/enforcement/.
+// Never pollute the contributor's real state dir during tests.
+const { TEST_HOME } = vi.hoisted(() => ({
+  TEST_HOME: `/tmp/forgen-test-stop-guard-${process.pid}`,
+}));
+vi.mock('node:os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:os')>();
+  return { ...actual, homedir: () => TEST_HOME };
+});
+
+const {
+  evaluateStop,
+  incrementBlockCount,
+  resetBlockCount,
+  logDriftEvent,
+  getStuckLoopThreshold,
+} = await import('../src/hooks/stop-guard.js');
 
 type SpikeRule = Parameters<typeof evaluateStop>[1][number];
 
@@ -17,7 +34,10 @@ const R_B1: SpikeRule = {
   id: 'R-B1',
   mech: 'B',
   hook: 'Stop',
-  trigger: { response_keywords_regex: '완료|완성|done|ready|shipped|LGTM|finished' },
+  trigger: {
+    response_keywords_regex: '(완료했|완성됐|완성되|완성했|done\\.|ready\\.|shipped\\.|LGTM|finished\\.)',
+    context_exclude_regex: '(취소|철회|없음|없습니다|않았|하지\\s*않|아닙니다|not\\s*yet|no\\s*longer|retract|withdraw|아직\\s*(안|아)|stuck-loop|force\\s*approve|block\\s*hook|meta|자가철회|자기인용|spike|PR 없|ADR|변경\\s*없|아직\\s*구현)',
+  },
   verifier: {
     kind: 'self_check_prompt',
     params: {
@@ -84,6 +104,41 @@ describe('evaluateStop (pure core)', () => {
     expect(r.action).toBe('approve');
   });
 
+  describe('retraction FP (Day-3 발견 3) — context_exclude 로 차단되어야 함', () => {
+    const cases = [
+      '완료 선언을 취소합니다. 증거 파일이 존재하지 않습니다.',
+      '완료 선언을 하지 않았습니다. 철회 상태 유지.',
+      '완료 선언 없음. 증거 파일 없음.',
+      '완료 선언을 한 적이 없으며, 철회 상태를 유지합니다.',
+      '동일 상태. 사용자 입력 필요.',
+      '상태 변화 없음.',
+      'Not yet done — still waiting on evidence.',
+      '아직 구현 완료되지 않았습니다.',
+    ];
+    for (const msg of cases) {
+      it(`retraction/meta message → approve: "${msg.slice(0, 40)}..."`, () => {
+        const r = evaluateStop(msg, [R_B1]);
+        expect(r.action).toBe('approve');
+      });
+    }
+  });
+
+  describe('true completion declarations → block', () => {
+    const cases = [
+      '구현 완료했습니다.',
+      '기능 구현이 완성되었습니다.',
+      '배포 shipped.',
+      'Tests passed. done.',
+      'LGTM',
+    ];
+    for (const msg of cases) {
+      it(`true completion → block: "${msg}"`, () => {
+        const r = evaluateStop(msg, [R_B1]);
+        expect(r.action).toBe('block');
+      });
+    }
+  });
+
   it('S3: e2e 증거 파일이 fresh 면 → approve', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'forgen-sg-'));
     const evidence = path.join(tmpDir, 'e2e-result.json');
@@ -112,6 +167,71 @@ describe('evaluateStop (pure core)', () => {
     expect(r.action).toBe('block');
     if (r.action === 'block') {
       expect(r.hit.id).toBe('R-B1');
+    }
+  });
+});
+
+describe('stuck-loop guard (block_count ceiling)', () => {
+  beforeEach(() => {
+    fs.rmSync(TEST_HOME, { recursive: true, force: true });
+  });
+  afterEach(() => {
+    fs.rmSync(TEST_HOME, { recursive: true, force: true });
+  });
+
+  it('incrementBlockCount persists across calls (same session + rule)', () => {
+    expect(incrementBlockCount('sess-1', 'R-B1')).toBe(1);
+    expect(incrementBlockCount('sess-1', 'R-B1')).toBe(2);
+    expect(incrementBlockCount('sess-1', 'R-B1')).toBe(3);
+  });
+
+  it('different rule → independent counter', () => {
+    incrementBlockCount('sess-1', 'R-B1');
+    expect(incrementBlockCount('sess-1', 'R-B2')).toBe(1);
+  });
+
+  it('different session → independent counter', () => {
+    incrementBlockCount('sess-1', 'R-B1');
+    expect(incrementBlockCount('sess-2', 'R-B1')).toBe(1);
+  });
+
+  it('resetBlockCount wipes the counter', () => {
+    incrementBlockCount('sess-1', 'R-B1');
+    incrementBlockCount('sess-1', 'R-B1');
+    resetBlockCount('sess-1', 'R-B1');
+    expect(incrementBlockCount('sess-1', 'R-B1')).toBe(1);
+  });
+
+  it('sanitizes session_id for filename safety (path traversal)', () => {
+    // session id with path separators must not escape BLOCK_COUNT_DIR
+    expect(() => incrementBlockCount('../../../etc/passwd', 'R-B1')).not.toThrow();
+    // ensure the counter file landed inside TEST_HOME
+    const traversalTarget = '/etc/passwd';
+    expect(fs.existsSync(traversalTarget + '.json')).toBe(false);
+  });
+
+  it('logDriftEvent appends a JSONL line under TEST_HOME', () => {
+    logDriftEvent({ kind: 'stuck_loop_force_approve', session_id: 's', rule_id: 'R-B1', count: 4 });
+    const logPath = path.join(TEST_HOME, '.forgen', 'state', 'enforcement', 'drift.jsonl');
+    expect(fs.existsSync(logPath)).toBe(true);
+    const line = fs.readFileSync(logPath, 'utf-8').trim();
+    const obj = JSON.parse(line);
+    expect(obj.kind).toBe('stuck_loop_force_approve');
+    expect(obj.count).toBe(4);
+  });
+
+  it('getStuckLoopThreshold default is 3, env override works', () => {
+    const original = process.env.FORGEN_STUCK_LOOP_THRESHOLD;
+    try {
+      delete process.env.FORGEN_STUCK_LOOP_THRESHOLD;
+      expect(getStuckLoopThreshold()).toBe(3);
+      process.env.FORGEN_STUCK_LOOP_THRESHOLD = '5';
+      expect(getStuckLoopThreshold()).toBe(5);
+      process.env.FORGEN_STUCK_LOOP_THRESHOLD = '-1';
+      expect(getStuckLoopThreshold()).toBe(3); // invalid → fallback
+    } finally {
+      if (original === undefined) delete process.env.FORGEN_STUCK_LOOP_THRESHOLD;
+      else process.env.FORGEN_STUCK_LOOP_THRESHOLD = original;
     }
   });
 });

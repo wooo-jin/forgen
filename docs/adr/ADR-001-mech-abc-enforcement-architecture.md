@@ -1,10 +1,11 @@
 # ADR-001: Mech-A/B/C 3축 강제 메커니즘 아키텍처
 
-**Status**: Proposed
+**Status**: Accepted (2026-04-22)
 **Date**: 2026-04-22
 **Reversibility**: Type 1 (비가역 경향 — rule 파일의 on-disk 스키마 변경이 포함됨)
 **Related Interview**: Deep Interview v0.4.0 Trust Restoration (Round 10, Ambiguity 0.13)
 **Owner**: forgen v0.4.0 릴리즈
+**A1 Spike evidence**: [mech-b-a1-verification-report.md](../spike/mech-b-a1-verification-report.md) — Day-4 Full 10-run 10/10 PASS, success gate 4/4 충족 (block 수용률 1.00, FP 0.00, hook p95 7ms, 추가 API 호출 0). A1/A2/β1 전부 실증.
 
 ## Context
 

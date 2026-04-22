@@ -29,6 +29,16 @@ import { isHookEnabled } from './hook-config.js';
 
 const HOOK_NAME = 'stop-guard';
 
+/**
+ * Stuck-loop guard 임계치.
+ * Day-3 smoke 에서 block reason 문구가 Claude 응답에 재매칭되어 6회 연속 block 된
+ * regression 관찰됨. 이 상한을 넘으면 force approve + drift 이벤트를 남겨
+ * ADR-002 Meta 트리거(규칙 자동 강등)로 연결한다.
+ */
+const STUCK_LOOP_THRESHOLD = 3;
+const BLOCK_COUNT_DIR = path.join(os.homedir(), '.forgen', 'state', 'enforcement', 'block-count');
+const DRIFT_LOG = path.join(os.homedir(), '.forgen', 'state', 'enforcement', 'drift.jsonl');
+
 interface VerifierSpec {
   kind: 'self_check_prompt' | 'artifact_check' | 'tool_arg_regex';
   params: Record<string, string | number | boolean>;
@@ -186,6 +196,79 @@ export function evaluateStop(
   return { action: 'approve', hit: null };
 }
 
+interface BlockCounterState {
+  sessionId: string;
+  ruleId: string;
+  count: number;
+  firstBlockAt: string;
+  lastBlockAt: string;
+}
+
+function blockCounterPath(sessionId: string, ruleId: string): string {
+  // 파일명 안전화 — 경로 인젝션 방지
+  const safeSession = String(sessionId).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
+  const safeRule = String(ruleId).replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 40);
+  return path.join(BLOCK_COUNT_DIR, `${safeSession}__${safeRule}.json`);
+}
+
+/**
+ * 같은 (session, rule) 조합의 연속 block 카운트. approve 가 일어나면 0 으로 초기화.
+ * export for tests. 부수효과: 디렉토리 생성 + 파일 쓰기.
+ */
+export function incrementBlockCount(sessionId: string, ruleId: string): number {
+  try {
+    fs.mkdirSync(BLOCK_COUNT_DIR, { recursive: true });
+    const p = blockCounterPath(sessionId, ruleId);
+    let state: BlockCounterState;
+    try {
+      const raw = fs.readFileSync(p, 'utf-8');
+      state = JSON.parse(raw) as BlockCounterState;
+      if (state.sessionId !== sessionId || state.ruleId !== ruleId) {
+        state = { sessionId, ruleId, count: 0, firstBlockAt: new Date().toISOString(), lastBlockAt: new Date().toISOString() };
+      }
+    } catch {
+      state = { sessionId, ruleId, count: 0, firstBlockAt: new Date().toISOString(), lastBlockAt: new Date().toISOString() };
+    }
+    state.count += 1;
+    state.lastBlockAt = new Date().toISOString();
+    fs.writeFileSync(p, JSON.stringify(state));
+    return state.count;
+  } catch {
+    return 1; // fail-open: 카운트 실패는 block 자체를 막지 않음
+  }
+}
+
+export function resetBlockCount(sessionId: string, ruleId: string): void {
+  try {
+    const p = blockCounterPath(sessionId, ruleId);
+    fs.unlinkSync(p);
+  } catch {
+    // already gone
+  }
+}
+
+export function logDriftEvent(event: {
+  kind: string;
+  session_id: string;
+  rule_id: string;
+  count: number;
+  reason_preview?: string;
+  message_preview?: string;
+}): void {
+  try {
+    fs.mkdirSync(path.dirname(DRIFT_LOG), { recursive: true });
+    fs.appendFileSync(DRIFT_LOG, JSON.stringify({ at: new Date().toISOString(), ...event }) + '\n');
+  } catch {
+    // best-effort
+  }
+}
+
+export function getStuckLoopThreshold(): number {
+  const env = Number(process.env.FORGEN_STUCK_LOOP_THRESHOLD);
+  if (Number.isFinite(env) && env > 0) return env;
+  return STUCK_LOOP_THRESHOLD;
+}
+
 export async function main(): Promise<void> {
   const started = Date.now();
   try {
@@ -210,12 +293,32 @@ export async function main(): Promise<void> {
     }
 
     const result = evaluateStop(lastMessage, rules);
+    const sessionId = input?.session_id ?? 'unknown';
+
     if (result.action === 'approve') {
+      // approve 시 모든 rule 에 대한 블록 카운터 초기화는 생략 (다음 block 시 자연 증가).
       console.log(approve());
       return;
     }
 
     const { hit, reason } = result;
+    const count = incrementBlockCount(sessionId, hit.id);
+    const threshold = getStuckLoopThreshold();
+    if (count > threshold) {
+      // Stuck-loop: force approve 하고 drift 기록. Claude 가 block reason 문구에
+      // 말려들어가는 경우를 끊는다. ADR-002 Meta 트리거 (rule 자동 강등) 에 연결.
+      logDriftEvent({
+        kind: 'stuck_loop_force_approve',
+        session_id: sessionId,
+        rule_id: hit.id,
+        count,
+        reason_preview: reason.slice(0, 120),
+        message_preview: lastMessage.slice(0, 120),
+      });
+      resetBlockCount(sessionId, hit.id);
+      console.log(approve());
+      return;
+    }
     console.log(blockStop(reason, hit.system_tag));
   } catch {
     console.log(failOpenWithTracking(HOOK_NAME));

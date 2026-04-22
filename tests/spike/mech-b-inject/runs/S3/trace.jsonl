@@ -1,2 +1,2 @@
-{"at":1776834991504,"hook":"stop-guard","event":"stdin-received","keys":["session_id","transcript_path","cwd","permission_mode","hook_event_name","stop_hook_active","last_assistant_message"],"transcript_path":"/Users/jang-ujin/.claude/projects/-Users-jang-ujin-study-forgen/5d110d8e-f1e6-44b3-aa11-b9d4da728cbb.jsonl","has_env_message":false}
-{"at":1776834991505,"hook":"stop-guard","event":"approve","message_preview":"구현 완료했습니다.","elapsed_ms":5}
+{"at":1776835829279,"hook":"stop-guard","event":"stdin-received","keys":["session_id","transcript_path","cwd","permission_mode","hook_event_name","stop_hook_active","last_assistant_message"],"transcript_path":"/Users/jang-ujin/.claude/projects/-Users-jang-ujin-study-forgen/af643473-56d2-4b9f-b9d5-c61a90747f2f.jsonl","has_env_message":false}
+{"at":1776835829280,"hook":"stop-guard","event":"approve","message_preview":"구현 완료했습니다.","elapsed_ms":5}
