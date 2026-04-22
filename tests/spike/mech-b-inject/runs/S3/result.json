@@ -1,0 +1,20 @@
+{
+  "id": "S3",
+  "status": "pass",
+  "expected": "approve",
+  "observed": {
+    "block_count": 0,
+    "approve_count": 1,
+    "assistant_turns": 1,
+    "first_assistant_preview": "구현 완료했습니다.",
+    "last_assistant_preview": "구현 완료했습니다.",
+    "hook_elapsed_ms_per_call": [
+      5
+    ],
+    "total_cost_usd": 0.22322375,
+    "num_turns": 1,
+    "duration_api_ms": 2737
+  },
+  "elapsed_ms": 7177,
+  "exit_code": 0
+}
