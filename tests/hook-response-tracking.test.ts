@@ -20,7 +20,7 @@ vi.mock('node:os', async (importOriginal) => {
   return { ...actual, homedir: () => TEST_HOME };
 });
 
-const { failOpenWithTracking, approve, deny, ask } = await import(
+const { failOpenWithTracking, approve, deny, ask, blockStop } = await import(
   '../src/hooks/shared/hook-response.js'
 );
 
@@ -73,5 +73,28 @@ describe('hook-response functions', () => {
     const result = JSON.parse(ask('confirm reason'));
     expect(result.continue).toBe(true);
     expect(result.hookSpecificOutput.permissionDecision).toBe('ask');
+  });
+
+  describe('blockStop (Stop hook only)', () => {
+    it('returns continue: true with decision: block and reason verbatim', () => {
+      const q = '직전 응답 전에 Docker e2e 증거가 있는가? 없다면 먼저 e2e를 돌리고 재응답하라.';
+      const result = JSON.parse(blockStop(q));
+      expect(result.continue).toBe(true);
+      expect(result.decision).toBe('block');
+      expect(result.reason).toBe(q);
+    });
+
+    it('attaches systemMessage only when provided (short rule tag)', () => {
+      const withTag = JSON.parse(blockStop('q', 'rule:R-B1 — e2e-before-done'));
+      expect(withTag.systemMessage).toBe('rule:R-B1 — e2e-before-done');
+
+      const withoutTag = JSON.parse(blockStop('q'));
+      expect('systemMessage' in withoutTag).toBe(false);
+    });
+
+    it('does not use hookSpecificOutput (Stop hook uses top-level decision/reason)', () => {
+      const result = JSON.parse(blockStop('q'));
+      expect('hookSpecificOutput' in result).toBe(false);
+    });
   });
 });

@@ -2,7 +2,7 @@
 
 **Spike plan**: [mech-b-a1-verification-plan.md](./mech-b-a1-verification-plan.md)
 **Related ADR**: [ADR-001](../adr/ADR-001-mech-abc-enforcement-architecture.md)
-**Status**: 🟡 In progress — Day 1 complete, Days 2~5 pending
+**Status**: 🟡 In progress — Day 1–2 complete, Days 3~5 pending
 **Last updated**: 2026-04-22
 
 ---
@@ -73,30 +73,74 @@ export function blockStop(reason: string, systemMessage?: string): string {
 
 ---
 
-## Day 2 — Scenario Spec + Prototype (대기)
+## Day 2 — Scenario Spec + Prototype (완료)
 
-Day 1 결과를 반영한 Day 2 선결 조정사항:
+Day 1 결과를 코드로 옮겼다. 모든 Day-2 deliverable 이 구현·테스트되었고 Day-3 진입 가능.
 
-1. **`scenarios.json` 설계 반영**:
-   - self-check 질문을 **`reason` 필드 전체**에 담기 (100~300자). 질문 형식은 "직전 응답 전 <증거 조건>이 충족됐는가? 없다면 <행동 지시>" 가 Ralph 패턴과 호환.
-   - `systemMessage` 에는 `"rule: <rule_id> — <1-line policy>"` 만.
-2. **prototype scope 확정**:
-   - `src/hooks/stop-guard.ts` 신규 — 완료선언 패턴 스캔 + enforce_via=Mech-A/B 규칙 verifier 실행 + block/approve 결정
-   - `src/hooks/shared/hook-response.ts` 에 `blockStop()` 추가
-   - `hooks/hook-registry.json` 에 stop-guard 엔트리 추가
-3. **runner.mjs 설계**:
-   - 각 시나리오마다 `forgen` 런처(wraps Claude)로 headless 세션 구동
-   - 세션 종료 후 `~/.forgen/state/enforcement/{session_id}.jsonl` 과 `~/.forgen/state/hook-timings/*.json` 수집
-   - pass/fail 라벨링: scenario.expected 와 JSONL event sequence 매칭
+### 구현 요약
 
-**Day 2 deliverables**:
-- `tests/spike/mech-b-inject/scenarios.json` (10개)
-- `src/hooks/stop-guard.ts` prototype (v0.4.0 후보 아님, spike-only branch 에서)
-- `src/hooks/shared/hook-response.ts` — `blockStop()` helper 추가
+1. **`tests/spike/mech-b-inject/scenarios.json`** — 10개 시나리오 + 3개 규칙 (R-A, R-B1, R-B2)
+   - self-check 질문은 `rule.verifier.params.question` 에 full-text 보관. stop-guard 가 이를 `blockStop(reason=question)` 으로 전달.
+   - `systemMessage` 용도는 각 rule 의 `system_tag` 한 줄 (`"rule:R-B1 — e2e-before-done"`).
+   - 시나리오 의도 분포: violation 5, normal 2, recovery_loop 1, stress 1, violation_multi 1.
+   - success gates 정량 기준 명시 (block 수용률 ≥ 0.8, API 추가 호출 0, p95 ≤ 200ms, FP ≤ 0.1).
 
-### Day 2 선결 블로커
+2. **`src/hooks/shared/hook-response.ts`** — `blockStop(reason, systemMessage?)` 추가.
+   - `{ continue: true, decision: 'block', reason, systemMessage? }` 구조 — Stop hook 공식 스펙 일치.
+   - JSDoc 에 "reason → next-turn content, systemMessage → auxiliary" 명시.
+   - 단위 테스트 3개 (`tests/hook-response-tracking.test.ts`): reason verbatim / systemMessage optional / hookSpecificOutput 없음.
 
-**Claude Code 실행 headless 가능성** — Day 2 초반 확인 필요. 불가능하면 runner 대신 수기 시나리오로 전환(시간 비용 +1 day).
+3. **`src/hooks/stop-guard.ts`** — Mech-B prototype.
+   - pure core: `evaluateStop(message, rules) → { action: 'approve' | 'block', hit, reason }`.
+   - `readLastAssistantMessage(transcriptPath)` — 실제 transcript JSONL 을 뒤에서부터 역순 스캔, 첫 assistant 턴 반환. `FORGEN_SPIKE_LAST_MESSAGE` env 로 runner/테스트 주입 가능.
+   - `FORGEN_SPIKE_RULES` env 로 scenarios.json 경로 override (spike-only; v0.4.0 최종 구현 아님).
+   - artifact check: `.forgen/state/` prefix 는 `~/.forgen/state/` 로 해석, 절대 경로도 지원, `max_age_s` 만료 체크.
+   - stdin 없음 / rules 0건 / lastMessage null → `approve()` (fail-open).
+   - 예외 → `failOpenWithTracking` (block 은 절대 안전장치 위반 시에도 workflow 를 막지 않음).
+   - 단위 7건 + stdin e2e 2건 (총 10건) 모두 통과. e2e 는 실제 `node dist/hooks/stop-guard.js` 에 fake Stop JSON 을 `spawnSync` stdin 으로 넣고 stdout 에 `decision:'block'` + `reason~/e2e/i` + `systemMessage~/R-B1/` 을 검증.
+
+4. **`hooks/hook-registry.json`** — `stop-guard` 엔트리 추가.
+   - `tier: compound-core`, `event: Stop`, `matcher: *`, `timeout: 10`, `compoundCritical: false` (spike 단계라 critical 은 off).
+   - `context-guard-stop` 다음 위치 — forge-loop 블록이 먼저 실행되어야 우리 stop-guard 가 overreach 하지 않음.
+
+5. **`forgen doctor`** — `✓ All diagnostics passed.` 확인. stop-guard 가 `[Hook Timings]` 에 자동 포함 (postinstall 후).
+
+### Day 2 선결 블로커 해소: headless 실행 가능성
+
+**RESOLVED — 가능.** `claude --help` 확인 결과 다음 조합으로 headless scripted session 구동 가능:
+
+- `-p` / `--print` — non-interactive mode
+- `--input-format stream-json --output-format stream-json` — JSONL stdin/stdout
+- `--include-hook-events` — hook lifecycle event 를 output stream 에 emit
+- `--plugin-dir <path>` — spike 브랜치 전용 hook 을 session-scoped 로 주입 (~/.claude 전역을 오염시키지 않음)
+- `--session-id <uuid>` — 결정론적 세션 ID (jsonl 파일 수집 용이)
+- `--allow-dangerously-skip-permissions` — 샌드박스 환경에서 permission prompt 우회
+
+**Day-3 runner 설계 확정**:
+```
+for each scenario in scenarios.json:
+  claude -p --plugin-dir tests/spike/mech-b-inject/prototype \
+         --input-format stream-json --output-format stream-json \
+         --include-hook-events --session-id $(uuidgen) \
+         --append-system-prompt "$(scenario.instruction)" \
+         < scenario.turns.jsonl \
+         | tee runs/$scenario.id.jsonl
+  → parse hook events + assistant turns, label pass/fail vs scenario.expected
+```
+
+수기 시나리오 fallback 불필요 — **+1 day 지연 없음**. Day 3 첫날부터 10개 시나리오 실행 진입.
+
+### Day 2 산출물 상태 체크
+
+| 기준 | 상태 |
+|------|------|
+| scenarios.json 10개 명세 | ✅ R-A(1) + R-B1(5) + R-B2(2) + normal(2) + 합성(1) |
+| blockStop() helper + 단위 테스트 | ✅ 3 tests pass |
+| stop-guard.ts 빌드 + fake stdin e2e | ✅ `node dist/hooks/stop-guard.js` 정상 JSON 응답 확인 |
+| hook-registry.json 엔트리 + doctor 무경고 | ✅ `✓ All diagnostics passed.` |
+| Day-3 시나리오 실행 방식 결정 | ✅ headless (claude -p + stream-json + --plugin-dir) |
+
+---
 
 ---
 
@@ -109,3 +153,4 @@ Day 1 결과를 반영한 Day 2 선결 조정사항:
 ## Amendments Log
 
 - **2026-04-22**: Day 1 completed. A1 prototocol-level verified; β1 confirmed. Helper `blockStop()` specified. Ready for Day 2.
+- **2026-04-22**: Day 2 completed. scenarios.json(10)/blockStop helper/stop-guard.ts prototype/registry 등록/doctor 통과. unit+e2e 12 tests pass. headless runner 가능 확인 (claude -p + stream-json + --plugin-dir). Day-3 시나리오 실행 단계 진입 준비.
