@@ -350,11 +350,19 @@ async function main(): Promise<void> {
   // 이렇게 해야 rule.block_message (맥락 있는 안내) 가 제네릭 "Dangerous command blocked" 대신 노출됨.
   // fail-open: 예외는 hook 차단 안 함.
   try {
-    const [{ loadActiveRules }, { recordViolation }] = await Promise.all([
+    const [
+      { loadActiveRules },
+      { recordViolation },
+      { compileSafeRegex, safeRegexTest },
+    ] = await Promise.all([
       import('../store/rule-store.js'),
       import('../engine/lifecycle/signals.js'),
+      import('./shared/safe-regex.js'),
     ]);
     const rules = loadActiveRules();
+    const command = typeof (toolInput as { command?: unknown }).command === 'string'
+      ? String((toolInput as { command: string }).command)
+      : '';
     for (const rule of rules) {
       for (const spec of rule.enforce_via ?? []) {
         if (spec.hook !== 'PreToolUse' || spec.mech !== 'A') continue;
@@ -362,10 +370,6 @@ async function main(): Promise<void> {
         if (!v || v.kind !== 'tool_arg_regex') continue;
         const pattern = String(v.params?.pattern ?? '');
         if (!pattern) continue;
-        const command = typeof (toolInput as { command?: unknown }).command === 'string'
-          ? String((toolInput as { command: string }).command)
-          : '';
-        const { compileSafeRegex, safeRegexTest } = await import('./shared/safe-regex.js');
         const re = compileSafeRegex(pattern, 'i');
         if (!re.regex) { log.debug(`rule ${rule.rule_id} unsafe regex: ${re.reason}`); continue; }
         if (!safeRegexTest(re.regex, command)) continue;

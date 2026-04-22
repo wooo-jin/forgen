@@ -110,14 +110,43 @@ export function loadRule(ruleId: string): Rule | null {
 }
 
 export function loadAllRules(): Rule[] {
-  if (!fs.existsSync(ME_RULES)) return [];
   const rules: Rule[] = [];
-  for (const file of fs.readdirSync(ME_RULES)) {
-    if (!file.endsWith('.json')) continue;
-    const rule = safeReadJSON<Rule | null>(path.join(ME_RULES, file), null);
-    if (rule) rules.push(rule);
+
+  // 1) 사용자 개인 rules: ~/.forgen/me/rules
+  if (fs.existsSync(ME_RULES)) {
+    for (const file of fs.readdirSync(ME_RULES)) {
+      if (!file.endsWith('.json')) continue;
+      const rule = safeReadJSON<Rule | null>(path.join(ME_RULES, file), null);
+      if (rule) rules.push(rule);
+    }
   }
+
+  // 2) 프로젝트 로컬 rules: <cwd>/.forgen/rules
+  // ADR-003 Phase 1 Dogfood — 팀/프로젝트가 git 에 committed 한 L1 정책을 자동 로드.
+  // 같은 rule_id 가 me 와 project 양쪽에 있으면 project 가 우선 (git 소스가 정책 진실).
+  const projectRulesDir = resolveProjectRulesDir();
+  if (projectRulesDir && fs.existsSync(projectRulesDir)) {
+    for (const file of fs.readdirSync(projectRulesDir)) {
+      if (!file.endsWith('.json')) continue;
+      const rule = safeReadJSON<Rule | null>(path.join(projectRulesDir, file), null);
+      if (!rule) continue;
+      const existingIdx = rules.findIndex((r) => r.rule_id === rule.rule_id);
+      if (existingIdx >= 0) rules[existingIdx] = rule; // project override
+      else rules.push(rule);
+    }
+  }
+
   return rules;
+}
+
+/**
+ * 현재 프로젝트 cwd 의 `.forgen/rules/` 경로. FORGEN_CWD/COMPOUND_CWD 우선.
+ * 테스트 / CI 에서 프로젝트 스코프 로딩을 비활성화하려면 FORGEN_DISABLE_PROJECT_RULES=1.
+ */
+function resolveProjectRulesDir(): string | null {
+  if (process.env.FORGEN_DISABLE_PROJECT_RULES === '1') return null;
+  const cwd = process.env.FORGEN_CWD ?? process.env.COMPOUND_CWD ?? process.cwd();
+  return path.join(cwd, '.forgen', 'rules');
 }
 
 export function loadActiveRules(): Rule[] {

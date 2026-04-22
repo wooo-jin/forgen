@@ -288,26 +288,35 @@ async function main(): Promise<void> {
   // 6. Compound negative signal (non-blocking)
   try { checkCompoundNegative(toolName, toolResponse, sessionId); } catch (e) { log.debug('compound negative check 실패', e); }
 
-  // 6a. ADR-001 Mech-A PostToolUse dispatcher — pattern_match verifier.
-  // 도구 출력물 (Write content / Bash response 등) 에서 enforce_via[PostToolUse].pattern_match 매칭.
-  // PostToolUse 는 이미 실행된 후라 block 불가 → warning + violation 기록.
+  // 6a+b. ADR-001 Mech-A PostToolUse + T3 bypass — single rule load, 두 dispatcher 공유.
+  // R2-P perf: 이전에는 6a, 6b 각각 loadActiveRules() 재호출 → file read 2배.
   if (toolName === 'Write' || toolName === 'Edit' || toolName === 'Bash') {
-    try {
-      const target = ((): string => {
-        const c = (toolInput as { content?: unknown }).content;
-        if (typeof c === 'string') return c;
-        const ns = (toolInput as { new_string?: unknown }).new_string;
-        if (typeof ns === 'string') return ns;
-        const cmd = (toolInput as { command?: unknown }).command;
-        if (typeof cmd === 'string') return cmd;
-        return '';
-      })() || toolResponse;
-      if (target) {
-        const [{ loadActiveRules }, { recordViolation }] = await Promise.all([
+    const target = ((): string => {
+      const c = (toolInput as { content?: unknown }).content;
+      if (typeof c === 'string') return c;
+      const ns = (toolInput as { new_string?: unknown }).new_string;
+      if (typeof ns === 'string') return ns;
+      const cmd = (toolInput as { command?: unknown }).command;
+      if (typeof cmd === 'string') return cmd;
+      return '';
+    })() || toolResponse;
+
+    if (target) {
+      try {
+        const [
+          { loadActiveRules },
+          { recordViolation, recordBypass },
+          { scanForBypass },
+          { compileSafeRegex, safeRegexTest },
+        ] = await Promise.all([
           import('../store/rule-store.js'),
           import('../engine/lifecycle/signals.js'),
+          import('../engine/lifecycle/bypass-detector.js'),
+          import('./shared/safe-regex.js'),
         ]);
         const rules = loadActiveRules();
+
+        // Mech-A pattern_match dispatcher
         for (const rule of rules) {
           for (const spec of rule.enforce_via ?? []) {
             if (spec.hook !== 'PostToolUse' || spec.mech !== 'A') continue;
@@ -315,7 +324,6 @@ async function main(): Promise<void> {
             if (!v || v.kind !== 'pattern_match') continue;
             const pattern = String(v.params?.pattern ?? '');
             if (!pattern) continue;
-            const { compileSafeRegex, safeRegexTest } = await import('./shared/safe-regex.js');
             const re = compileSafeRegex(pattern);
             if (!re.regex) { log.debug(`rule ${rule.rule_id} unsafe regex: ${re.reason}`); continue; }
             if (!safeRegexTest(re.regex, target)) continue;
@@ -330,36 +338,14 @@ async function main(): Promise<void> {
             );
           }
         }
-      }
-    } catch (e) { log.debug('enforce_via[PostToolUse] dispatch 실패', e); }
-  }
 
-  // 6b. Bypass detection (T3 signal for ADR-002 lifecycle).
-  // Scan Write/Edit content or Bash command against active rules' negative-intent policies.
-  // Fail-open: bypass detection must never block tool execution.
-  if (toolName === 'Write' || toolName === 'Edit' || toolName === 'Bash') {
-    try {
-      const content = typeof (toolInput as { content?: unknown }).content === 'string'
-        ? String((toolInput as { content: string }).content)
-        : typeof (toolInput as { new_string?: unknown }).new_string === 'string'
-        ? String((toolInput as { new_string: string }).new_string)
-        : typeof (toolInput as { command?: unknown }).command === 'string'
-        ? String((toolInput as { command: string }).command)
-        : '';
-      const target = content || toolResponse;
-      if (target) {
-        const [{ loadActiveRules }, { scanForBypass }, { recordBypass }] = await Promise.all([
-          import('../store/rule-store.js'),
-          import('../engine/lifecycle/bypass-detector.js'),
-          import('../engine/lifecycle/signals.js'),
-        ]);
-        const rules = loadActiveRules();
+        // T3 bypass detection (same rules, same target)
         const candidates = scanForBypass({ rules, tool_name: toolName, tool_output: target, session_id: sessionId });
         for (const c of candidates) {
           recordBypass({ rule_id: c.rule_id, session_id: c.session_id, tool: c.tool, pattern_preview: c.pattern_preview });
         }
-      }
-    } catch (e) { log.debug('bypass detect 실패', e); }
+      } catch (e) { log.debug('enforce_via/bypass post-tool dispatch 실패', e); }
+    }
   }
 
   // 7. Compound success hint (non-blocking)

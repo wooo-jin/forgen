@@ -47,8 +47,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `forgen rule-meta-scan [--apply] [--window N] [--threshold N]` — drift.jsonl 읽어 Mech 강등 후보 산출.
 - `forgen lifecycle-scan [--apply]` — T2~T5 + Meta 양방향 전체 실행.
 
+**Upgrade notes (v0.3.x → v0.4.0)**:
+- 첫 `forgen` 실행 시 기존 rule 파일 (`~/.forgen/me/rules/*.json`) 에 `lifecycle` 블록이 자동 주입됩니다 (inject_count, phase='active' 등). 기존 필드는 보존됨.
+- 프로젝트 로컬 `.forgen/rules/*.json` 이 자동 로드됩니다 (runtime 병합). 팀 dogfood 경로. 테스트/격리 필요 시 `FORGEN_DISABLE_PROJECT_RULES=1`.
+- `FORGEN_USER_CONFIRMED=1` 으로 Mech-A PreToolUse 우회 시 violations.jsonl 에 `kind:'correction'` audit 엔트리 기록.
+
 **운영 지표**:
-- 전체 회귀 1888/1888 pass (157 files), TypeScript clean.
+- 전체 회귀 1926/1926 pass (164 files), TypeScript clean.
 - forgen doctor 20/20 hooks active.
 - Self-gate 3단 체인 그린.
 

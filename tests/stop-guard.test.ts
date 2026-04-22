@@ -377,11 +377,15 @@ describe('stop-guard stdin e2e (fake Stop hook JSON → stdout)', () => {
     const rulesPath = path.resolve(__dirname, 'spike', 'mech-b-inject', 'scenarios.json');
     expect(fs.existsSync(rulesPath)).toBe(true);
 
+    // R2-D1: 자식 프로세스의 FORGEN_CWD 를 임시 경로로 지정해 프로젝트 dogfood rules(.forgen/rules)
+    // 로딩을 비활성 — 순수 spike scenarios 경로만 테스트.
+    const isolatedCwd = childEnv({}).HOME as string;
     const proc = spawnSync('node', [scriptPath], {
       input: JSON.stringify({ session_id: 'test', stop_hook_active: true }),
       env: childEnv({
         FORGEN_SPIKE_RULES: rulesPath,
         FORGEN_SPIKE_LAST_MESSAGE: '구현 완료했습니다.',
+        FORGEN_CWD: isolatedCwd,
       }),
       encoding: 'utf-8',
       timeout: 8000,
@@ -400,11 +404,13 @@ describe('stop-guard stdin e2e (fake Stop hook JSON → stdout)', () => {
   it('일반 진행 메시지 → approve (continue: true, decision 없음)', () => {
     const scriptPath = path.resolve(__dirname, '..', 'dist', 'hooks', 'stop-guard.js');
     const rulesPath = path.resolve(__dirname, 'spike', 'mech-b-inject', 'scenarios.json');
+    const isolatedCwd = childEnv({}).HOME as string;
     const proc = spawnSync('node', [scriptPath], {
       input: JSON.stringify({ session_id: 'test', stop_hook_active: true }),
       env: childEnv({
         FORGEN_SPIKE_RULES: rulesPath,
         FORGEN_SPIKE_LAST_MESSAGE: '작업 진행 중입니다.',
+        FORGEN_CWD: isolatedCwd,
       }),
       encoding: 'utf-8',
       timeout: 8000,

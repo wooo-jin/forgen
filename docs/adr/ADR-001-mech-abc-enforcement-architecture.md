@@ -1,11 +1,14 @@
 # ADR-001: Mech-A/B/C 3축 강제 메커니즘 아키텍처
 
-**Status**: Accepted (2026-04-22)
+**Status**: Accepted (2026-04-22, amended same day)
 **Date**: 2026-04-22
 **Reversibility**: Type 1 (비가역 경향 — rule 파일의 on-disk 스키마 변경이 포함됨)
 **Related Interview**: Deep Interview v0.4.0 Trust Restoration (Round 10, Ambiguity 0.13)
 **Owner**: forgen v0.4.0 릴리즈
 **A1 Spike evidence**: [mech-b-a1-verification-report.md](../spike/mech-b-a1-verification-report.md) — Day-4 Full 10-run 10/10 PASS, success gate 4/4 충족 (block 수용률 1.00, FP 0.00, hook p95 7ms, 추가 API 호출 0). A1/A2/β1 전부 실증.
+
+**Amendments**:
+- 2026-04-22: `EnforceSpec` 에 `trigger_keywords_regex` / `trigger_exclude_regex` / `system_tag` 필드 3개 추가 (Stop hook 전용, 모두 optional). 구현 중 rule 별 차별적 trigger 제어 필요성이 드러남. 다운그레이드 시 구버전은 이 필드를 graceful-ignore.
 
 ## Context
 
@@ -111,6 +114,13 @@ export interface EnforceSpec {
   verifier?: VerifierSpec;   // Mech-A/B에서 필수, Mech-C에서는 미사용
   block_message?: string;    // Mech-A BLOCK 시 Claude에게 전달할 reason
   drift_key?: string;        // Mech-C: drift-score.ts 키
+
+  // v0.4.0 amendment (2026-04-22): Stop hook 전용 trigger 제어.
+  // 구현 과정에서 rule 별로 다른 완료선언 패턴이 필요함이 드러남(예: R-B1 완료 키워드 vs R-B2 mock 키워드).
+  // 미지정 시 shared default 사용.
+  trigger_keywords_regex?: string;    // Stop hook: 발화 조건 regex
+  trigger_exclude_regex?: string;     // Stop hook: 발화 차단 regex (retraction/meta 제외)
+  system_tag?: string;                // UI 표시용 한 줄 (Stop hook systemMessage 필드)
 }
 
 // 기존 Rule 확장
