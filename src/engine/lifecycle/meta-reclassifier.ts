@@ -92,7 +92,10 @@ export function scanDriftForDemotion(options: {
   const candidates: DemotionCandidate[] = [];
   for (const [ruleId, entries] of byRule.entries()) {
     if (entries.length < threshold) continue;
-    const rule = options.rules.find((r) => r.rule_id === ruleId || r.rule_id.startsWith(ruleId));
+    // M fix: exact match — 이전에는 startsWith 로 인해 "L1" prefix 로 여러 L1-* rule 이 교차 오염됐음.
+    const rule = options.rules.find((r) => r.rule_id === ruleId);
+    // C2: hard strength rule 은 Meta demote 대상에서 제외 (ADR-002 불변 원칙).
+    if (rule?.strength === 'hard') continue;
     const currentMechs = (rule?.enforce_via ?? [])
       .map((s) => s.mech)
       .filter((m, i, arr) => arr.indexOf(m) === i);
@@ -144,6 +147,8 @@ export function scanSignalsForPromotion(options: {
   const out: PromotionCandidate[] = [];
   for (const rule of options.rules) {
     if (rule.status !== 'active') continue;
+    // C2: hard rule 은 promote 도 불변 (이미 최강이거나 사용자 의도적 고정).
+    if (rule.strength === 'hard') continue;
     const s = options.signals.get(rule.rule_id);
     if (!s) continue;
     if (s.injects_rolling_n < minInjects) continue;
@@ -243,6 +248,15 @@ export interface ApplyResult {
 }
 
 export function applyDemotion(rule: Rule, candidate: DemotionCandidate, now: number = Date.now()): ApplyResult {
+  // C2 guard: hard rule 은 demote 불가 — 호출자가 scanDriftForDemotion 을 거치면
+  // 이미 필터되지만, applyDemotion 을 직접 호출하는 경로도 방어.
+  if (rule.strength === 'hard') {
+    return {
+      rule_id: rule.rule_id, before_mech: (rule.enforce_via ?? []).map((s) => s.mech),
+      after_mech: (rule.enforce_via ?? []).map((s) => s.mech), events: [], applied: false,
+      reason: 'hard rule — demotion refused',
+    };
+  }
   const specs: EnforceSpec[] = rule.enforce_via ?? [];
   const before = specs.map((s) => s.mech);
   const events: LifecycleEvent[] = [];
@@ -311,16 +325,27 @@ export function applyDemotion(rule: Rule, candidate: DemotionCandidate, now: num
   };
 }
 
+const LIFECYCLE_ROTATION_THRESHOLD = 10 * 1024 * 1024; // 10 MB
+
 export function appendLifecycleEvents(events: LifecycleEvent[], now: number = Date.now()): void {
   if (events.length === 0) return;
   try {
     fs.mkdirSync(LIFECYCLE_DIR, { recursive: true });
     const date = new Date(now).toISOString().slice(0, 10);
     const logPath = path.join(LIFECYCLE_DIR, `${date}.jsonl`);
+    // H8: size-based rotation
+    try {
+      const st = fs.statSync(logPath);
+      if (st.size > LIFECYCLE_ROTATION_THRESHOLD) {
+        fs.renameSync(logPath, `${logPath}.${Date.now()}`);
+      }
+    } catch { /* missing → no rotate */ }
     const body = events.map((e) => JSON.stringify(e)).join('\n') + '\n';
     fs.appendFileSync(logPath, body);
-  } catch {
-    // best-effort
+  } catch (e) {
+    if (process.env.FORGEN_DEBUG_SIGNALS === '1') {
+      console.error(`[forgen:lifecycle] appendLifecycleEvents failed: ${(e as Error).message}`);
+    }
   }
 }
 

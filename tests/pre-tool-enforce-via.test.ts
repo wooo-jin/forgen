@@ -87,7 +87,7 @@ describe('pre-tool-use enforce_via dispatcher (ADR-001 Mech-A PreToolUse)', () =
     }
   });
 
-  it('FORGEN_USER_CONFIRMED=1 → our rule passes (though other guards may still deny)', () => {
+  it('FORGEN_USER_CONFIRMED=1 → our rule deny passes, audit 엔트리(kind:correction)만 기록', () => {
     const home = makeHome([ruleWithPreToolUse()]);
     try {
       const target = ['r', 'm', ' -', 'rf'].join('') + ' /tmp/forgen-test-target';
@@ -97,14 +97,17 @@ describe('pre-tool-use enforce_via dispatcher (ADR-001 Mech-A PreToolUse)', () =
         session_id: 'pre-sg',
       }, { FORGEN_USER_CONFIRMED: '1' });
       expect(proc.status).toBe(0);
-      // Our rule doesn't deny — forgen's built-in dangerous-command check may still deny rm -rf.
-      // Either way, our enforce_via dispatcher should NOT be the source.
+
+      // H3 audit: L1-pre-test rule 의 deny 는 발생하지 않지만 우회 audit 로그는 kind='correction' 으로 기록.
       const vpath = path.join(home, '.forgen', 'state', 'enforcement', 'violations.jsonl');
-      // If violations written, they should NOT come from our L1-pre-test rule (confirmed flag set).
       if (fs.existsSync(vpath)) {
         const entries = fs.readFileSync(vpath, 'utf-8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
         for (const e of entries) {
-          expect(e.rule_id).not.toBe('L1-pre-test');
+          if (e.rule_id === 'L1-pre-test') {
+            // L1-pre-test 관련 엔트리가 있다면 반드시 audit (correction) 만 허용, deny 는 금지.
+            expect(e.kind).toBe('correction');
+            expect(e.message_preview).toMatch(/FORGEN_USER_CONFIRMED=1 bypass/);
+          }
         }
       }
     } finally {

@@ -12,6 +12,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createLogger } from '../core/logger.js';
 import { readStdinJSON } from './shared/read-stdin.js';
@@ -309,9 +310,31 @@ async function maybeSpawnAutoCompound(
 
   const { spawn: spawnProcess } = await import('node:child_process');
   const cwd = process.env.FORGEN_CWD ?? process.env.COMPOUND_CWD ?? process.cwd();
-  // 테스트 주입용 — FORGEN_AUTO_COMPOUND_RUNNER_PATH 가 설정되면 그 스크립트를 대신 실행.
-  const runnerPath = process.env.FORGEN_AUTO_COMPOUND_RUNNER_PATH
-    ?? path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'core', 'auto-compound-runner.js');
+
+  // 기본: 번들된 auto-compound-runner. 프로덕션 빌드는 이 경로만 실행.
+  const defaultRunner = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'core', 'auto-compound-runner.js');
+
+  // 테스트 주입 경로 — FORGEN_TEST=1 게이트 + 경로 containment (~/.forgen 또는 /tmp 하위만 허용).
+  // FORGEN_TEST 없이 FORGEN_AUTO_COMPOUND_RUNNER_PATH 만 설정되어도 무시 → 임의 코드 실행 방지.
+  let runnerPath = defaultRunner;
+  const override = process.env.FORGEN_AUTO_COMPOUND_RUNNER_PATH;
+  if (override && process.env.FORGEN_TEST === '1') {
+    const resolved = path.resolve(override);
+    const homeDir = os.homedir();
+    const allowed = [
+      path.join(homeDir, '.forgen'),
+      os.tmpdir(), // 플랫폼별 /tmp, /var/folders/... 등
+      '/tmp',
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..'),
+    ];
+    if (allowed.some((root) => resolved === root || resolved.startsWith(root + path.sep))) {
+      runnerPath = resolved;
+    } else {
+      log.debug(`FORGEN_AUTO_COMPOUND_RUNNER_PATH 무시 — ${resolved} 가 허용 루트 밖`);
+    }
+  } else if (override) {
+    log.debug('FORGEN_AUTO_COMPOUND_RUNNER_PATH 무시 — FORGEN_TEST=1 가 필요');
+  }
   const child = spawnProcess('node', [runnerPath, cwd, transcriptPath, sessionId], {
     detached: true,
     stdio: 'ignore',

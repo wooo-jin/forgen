@@ -29,6 +29,7 @@ import { isHookEnabled } from './hook-config.js';
 import { loadActiveRules } from '../store/rule-store.js';
 import type { Rule, EnforceSpec } from '../store/types.js';
 import { recordViolation } from '../engine/lifecycle/signals.js';
+import { compileSafeRegex, safeRegexTest } from './shared/safe-regex.js';
 
 const HOOK_NAME = 'stop-guard';
 
@@ -82,17 +83,15 @@ interface StopHookInput {
   last_assistant_message?: string;
 }
 
-/** Spike scenarios.json 로더 (테스트/스파이크용). */
+/**
+ * Spike scenarios.json 로더 — FORGEN_SPIKE_RULES 명시 시에만 로드.
+ * H1 (2026-04-22): 이전에는 process.cwd()/tests/spike/... 를 기본 폴백했으나,
+ * 사용자가 forgen 저장소 안에서 작업 중이면 테스트 픽스처가 프로덕션 hook 으로
+ * 활성되는 부작용이 있었음. 이제 env 명시 opt-in.
+ */
 function loadSpikeRules(): SpikeRule[] {
-  const override = process.env.FORGEN_SPIKE_RULES;
-  const defaultPath = path.join(
-    process.cwd(),
-    'tests',
-    'spike',
-    'mech-b-inject',
-    'scenarios.json'
-  );
-  const rulesPath = override ?? defaultPath;
+  const rulesPath = process.env.FORGEN_SPIKE_RULES;
+  if (!rulesPath) return [];
   try {
     const raw = fs.readFileSync(rulesPath, 'utf-8');
     const parsed = JSON.parse(raw) as ScenariosFile;
@@ -200,11 +199,12 @@ function readLastAssistantMessage(input?: StopHookInput | null): string | null {
 function messageTriggersRule(message: string, rule: SpikeRule): boolean {
   const t = rule.trigger;
   if (!t.response_keywords_regex) return false;
-  const include = new RegExp(t.response_keywords_regex, 'i');
-  if (!include.test(message)) return false;
+  const includeRes = compileSafeRegex(t.response_keywords_regex, 'i');
+  if (!includeRes.regex) return false;
+  if (!safeRegexTest(includeRes.regex, message)) return false;
   if (t.context_exclude_regex) {
-    const exclude = new RegExp(t.context_exclude_regex, 'i');
-    if (exclude.test(message)) return false;
+    const excludeRes = compileSafeRegex(t.context_exclude_regex, 'i');
+    if (excludeRes.regex && safeRegexTest(excludeRes.regex, message)) return false;
   }
   return true;
 }
@@ -233,18 +233,32 @@ function evaluateVerifier(rule: SpikeRule): { violated: boolean; reason: string 
   return { violated: false, reason: '' };
 }
 
-/** artifact 경로를 ~/.forgen/state/ 기준으로 해석하고 최근 갱신 여부를 확인. */
+/**
+ * artifact 경로 해석 + 최근 갱신 확인.
+ *
+ * H9 (2026-04-22): rule JSON 의 verifier.params.path 를 임의 절대 경로로 지정해
+ * /etc/shadow 존재/mtime 을 탐지하는 path-traversal reconnaissance 를 막기 위해
+ * 허용 루트 (`~/.forgen/state/` 와 project `.forgen/state/`) 안으로 containment.
+ * 루트 밖 경로는 존재 여부와 무관하게 false 반환.
+ */
 function artifactFresh(relOrAbs: string, maxAgeS: number): boolean {
-  const base = path.join(os.homedir(), '.forgen', 'state');
-  // 절대/상대 혼용: '.forgen/state/...' 로 시작하면 homedir 기준으로 붙임
+  const homeBase = path.join(os.homedir(), '.forgen', 'state');
+  const projectBase = path.resolve(process.env.FORGEN_CWD ?? process.env.COMPOUND_CWD ?? process.cwd(), '.forgen', 'state');
+  const allowedRoots = [homeBase, projectBase];
+
   let p = relOrAbs;
   if (relOrAbs.startsWith('.forgen/state/')) {
     p = path.join(os.homedir(), relOrAbs);
   } else if (!path.isAbsolute(relOrAbs)) {
-    p = path.join(base, relOrAbs);
+    p = path.join(homeBase, relOrAbs);
   }
+
+  const resolved = path.resolve(p);
+  const inside = allowedRoots.some((root) => resolved === root || resolved.startsWith(root + path.sep));
+  if (!inside) return false; // containment violation → 존재 확인 자체를 거부
+
   try {
-    const st = fs.statSync(p);
+    const st = fs.statSync(resolved);
     if (maxAgeS <= 0) return true;
     const ageMs = Date.now() - st.mtimeMs;
     return ageMs <= maxAgeS * 1000;

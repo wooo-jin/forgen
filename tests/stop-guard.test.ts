@@ -142,8 +142,11 @@ describe('evaluateStop (pure core)', () => {
   });
 
   it('S3: e2e 증거 파일이 fresh 면 → approve', () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'forgen-sg-'));
-    const evidence = path.join(tmpDir, 'e2e-result.json');
+    // H9: evidence path 는 ~/.forgen/state/ 또는 project .forgen/state/ 하위에만 존재해야 함.
+    // vi.mock os.homedir = TEST_HOME 이므로 TEST_HOME/.forgen/state/ 에 배치.
+    const stateDir = path.join(TEST_HOME, '.forgen', 'state');
+    fs.mkdirSync(stateDir, { recursive: true });
+    const evidence = path.join(stateDir, 'e2e-result.json');
     fs.writeFileSync(evidence, '{}');
     const rule: SpikeRule = {
       ...R_B1,
@@ -160,8 +163,25 @@ describe('evaluateStop (pure core)', () => {
       const r = evaluateStop('완료했습니다.', [rule]);
       expect(r.action).toBe('approve');
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      fs.rmSync(stateDir, { recursive: true, force: true });
     }
+  });
+
+  it('H9 containment: rule 이 /etc/passwd 같은 임의 절대경로를 지목하면 → artifactFresh false → 여전히 block', () => {
+    const rule: SpikeRule = {
+      ...R_B1,
+      verifier: {
+        kind: 'self_check_prompt',
+        params: {
+          question: 'Docker e2e 증거 없음.',
+          evidence_path: '/etc/passwd', // containment violation
+          max_age_s: 3600,
+        },
+      },
+    };
+    // 실제 /etc/passwd 가 존재해도 containment 밖 → fresh=false → block
+    const r = evaluateStop('완료했습니다.', [rule]);
+    expect(r.action).toBe('block');
   });
 
   it('첫 번째로 매칭되는 Mech-B 규칙만 block 반환 (순차)', () => {

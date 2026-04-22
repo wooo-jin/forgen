@@ -365,13 +365,26 @@ async function main(): Promise<void> {
         const command = typeof (toolInput as { command?: unknown }).command === 'string'
           ? String((toolInput as { command: string }).command)
           : '';
-        if (!new RegExp(pattern, 'i').test(command)) continue;
+        const { compileSafeRegex, safeRegexTest } = await import('./shared/safe-regex.js');
+        const re = compileSafeRegex(pattern, 'i');
+        if (!re.regex) { log.debug(`rule ${rule.rule_id} unsafe regex: ${re.reason}`); continue; }
+        if (!safeRegexTest(re.regex, command)) continue;
         const requiresFlag = v.params?.requires_flag;
         const confirmed = process.env.FORGEN_USER_CONFIRMED === '1';
         if (requiresFlag && !confirmed) {
           recordViolation({ rule_id: rule.rule_id, session_id: sessionId, source: 'pre-tool-guard', kind: 'deny', message_preview: command.slice(0, 120) });
           console.log(deny(spec.block_message ?? `[${rule.rule_id}] policy violation: ${rule.policy.slice(0, 120)}`));
           return;
+        }
+        if (requiresFlag && confirmed) {
+          // H3: 우회 감사 — FORGEN_USER_CONFIRMED 으로 Mech-A 를 우회할 때마다 violation 로그에
+          // kind='correction' 으로 기록. T3 bypass 누적 대신 별도 채널로 운영자가 monitoring 가능.
+          recordViolation({
+            rule_id: rule.rule_id, session_id: sessionId,
+            source: 'pre-tool-guard',
+            kind: 'correction', // 'correction' = 사용자 명시 우회, rule 위반이지만 의도된 것
+            message_preview: `[FORGEN_USER_CONFIRMED=1 bypass] ${command.slice(0, 120)}`,
+          });
         }
       }
     }

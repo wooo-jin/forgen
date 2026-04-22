@@ -26,13 +26,39 @@ function ruleOf(overrides: Partial<Rule>): Rule {
 }
 
 describe('enforce-classifier.classify', () => {
-  it('destructive command → Mech-A PreToolUse + tool_arg_regex', () => {
+  it('destructive command → Mech-A PreToolUse + tool_arg_regex matching the actual literal', () => {
     const r = ruleOf({ trigger: 'dangerous-command', policy: 'confirm before rm -rf on home dir' });
     const p = classify(r);
     const a = p.proposed.find((s) => s.mech === 'A' && s.hook === 'PreToolUse');
     expect(a).toBeDefined();
     expect(a?.verifier?.kind).toBe('tool_arg_regex');
-    expect(p.reasoning.join(' ')).toMatch(/destructive/);
+    // C1 regression: pattern 이 "credentials" 로 잘못 고정되면 안 됨.
+    const pattern = String(a?.verifier?.params.pattern ?? '');
+    expect(pattern).not.toBe('credentials');
+    // "rm -rf" 구문이 매칭되어야 함.
+    expect(new RegExp(pattern, 'i').test('rm -rf /tmp/foo')).toBe(true);
+    expect(p.reasoning.join(' ')).toMatch(/rm/);
+  });
+
+  it('destructive: .env credentials rule → pattern matches literal, not "credentials" as alt-first', () => {
+    const r = ruleOf({ trigger: 'secret-commit', policy: 'do not commit .env files with credentials' });
+    const p = classify(r);
+    const a = p.proposed.find((s) => s.mech === 'A' && s.hook === 'PreToolUse');
+    expect(a).toBeDefined();
+    const pattern = String(a?.verifier?.params.pattern ?? '');
+    // pattern 이 실제 텍스트에서 매칭된 literal을 기반으로 해야 함 (credentials 또는 .env)
+    expect(['\\.env', 'credentials']).toContain(pattern);
+    // .env 라면 reasoning 에 반영
+    expect(p.reasoning.join(' ')).toMatch(/credentials|\.env/);
+  });
+
+  it('destructive: DROP TABLE rule → pattern catches the specific SQL literal', () => {
+    const r = ruleOf({ trigger: 'db-safety', policy: 'never DROP TABLE in production' });
+    const p = classify(r);
+    const a = p.proposed.find((s) => s.mech === 'A' && s.hook === 'PreToolUse');
+    expect(a).toBeDefined();
+    const pattern = String(a?.verifier?.params.pattern ?? '');
+    expect(new RegExp(pattern, 'i').test('DROP TABLE users')).toBe(true);
   });
 
   it('completion keyword → Mech-A Stop + artifact_check', () => {

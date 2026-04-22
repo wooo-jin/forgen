@@ -40,7 +40,9 @@ export function detect(input: T5Input): LifecycleEvent[] {
   const events: LifecycleEvent[] = [];
   const reported = new Set<string>(); // 'a|b' 쌍 중복 방지
 
-  const active = input.rules.filter((r) => r.status === 'active');
+  // M/T5 fix: 짧은 policy 는 토큰 overlap 이 우연히 발생하기 쉬우므로 20자 이상만.
+  // scope 도 같아야 — session-scoped 임시 규칙과 me-scope 영구 규칙이 서로 충돌로 잡히면 노이즈.
+  const active = input.rules.filter((r) => r.status === 'active' && r.policy.length >= 20);
   for (let i = 0; i < active.length; i++) {
     const a = active[i];
     const aTokens = tokens(a.policy);
@@ -48,6 +50,7 @@ export function detect(input: T5Input): LifecycleEvent[] {
     for (let j = i + 1; j < active.length; j++) {
       const b = active[j];
       if (a.category !== b.category) continue;
+      if (a.scope !== b.scope) continue; // M/T5: scope 불일치 시 pair 아님
       const bTokens = tokens(b.policy);
       const bNeg = NEGATION_RE.test(b.policy);
       if (aNeg === bNeg) continue; // 같은 어조 — 충돌 아님

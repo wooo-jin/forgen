@@ -26,6 +26,8 @@ export function detect(input: T4Input): LifecycleEvent[] {
   for (const rule of input.rules) {
     if (rule.status !== 'active') continue;
     if (rule.lifecycle?.phase === 'retired') continue;
+    // C2: hard rule 은 time decay 로도 retire 불가.
+    if (rule.strength === 'hard') continue;
     const s = input.signals.get(rule.rule_id);
     if (!s) continue;
     if (s.last_inject_days_ago < decayDays) continue;

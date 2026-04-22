@@ -71,6 +71,8 @@ export function detect(input: T1Input): LifecycleEvent[] {
   for (const rule of rules) {
     if (rule.status !== 'active') continue;
     if (!matchesRule(evidence, rule)) continue;
+    // C2: hard rule 은 retire/supersede 불변. fix-now(flag) 만 허용 — 관찰을 위한 소프트 신호.
+    if (rule.strength === 'hard' && action !== 'flag') continue;
     events.push({
       kind: 't1_explicit_correction',
       rule_id: rule.rule_id,

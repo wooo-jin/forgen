@@ -60,10 +60,28 @@ function checkMockInProduction() {
 function checkSecretsLeak() {
   const PATTERNS = [
     { name: 'Google API key', re: /\bAIza[0-9A-Za-z_-]{10,}/ },
+    { name: 'Google OAuth refresh token', re: /\b1\/\/0[A-Za-z0-9_-]{40,}/ },
     { name: 'Stripe secret', re: /\bsk_(live|test)_[0-9A-Za-z]{24,}/ },
+    { name: 'Stripe restricted', re: /\brk_(live|test)_[0-9A-Za-z]{24,}/ },
     { name: 'AWS access key', re: /\bAKIA[0-9A-Z]{16,}/ },
-    { name: 'GitHub PAT', re: /\bghp_[0-9A-Za-z]{30,}/ },
+    { name: 'AWS secret access key', re: /aws_secret_access_key\s*=\s*['"]?[A-Za-z0-9\/+]{40}['"]?/i },
+    { name: 'GitHub classic PAT', re: /\bghp_[0-9A-Za-z]{30,}/ },
+    { name: 'GitHub OAuth (user-to-server)', re: /\bghu_[0-9A-Za-z]{30,}/ },
+    { name: 'GitHub OAuth (server-to-server)', re: /\bghs_[0-9A-Za-z]{30,}/ },
+    { name: 'GitHub OAuth (refresh)', re: /\bghr_[0-9A-Za-z]{30,}/ },
+    { name: 'GitHub fine-grained PAT', re: /\bgithub_pat_[0-9A-Za-z_]{60,}/ },
+    { name: 'GitLab PAT', re: /\bglpat-[0-9A-Za-z_-]{20,}/ },
     { name: 'Slack token', re: /\bxox[bapsr]-[0-9A-Za-z-]{10,}/ },
+    { name: 'Slack webhook', re: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]+\/B[A-Z0-9]+\/[A-Za-z0-9]+/ },
+    { name: 'OpenAI API key', re: /\bsk-[A-Za-z0-9]{20,}/ },
+    { name: 'OpenAI project key', re: /\bsk-proj-[A-Za-z0-9_-]{20,}/ },
+    { name: 'Anthropic API key', re: /\bsk-ant-(api|admin)\d{2}-[A-Za-z0-9_-]{80,}/ },
+    { name: 'NPM token', re: /\bnpm_[A-Za-z0-9]{36}/ },
+    { name: 'SendGrid API key', re: /\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}/ },
+    { name: 'Fly.io API token', re: /\bfo1_[A-Za-z0-9_-]{40,}/ },
+    { name: 'GCP Service Account JSON', re: /"type"\s*:\s*"service_account"/ },
+    { name: 'Private key block', re: /-----BEGIN (RSA |OPENSSH |EC |DSA |PGP |ENCRYPTED )?PRIVATE KEY-----/ },
+    { name: 'JWT (3-part base64)', re: /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/ },
   ];
   const ALLOW_GLOBS = [
     /\.env\.example$/,
@@ -74,6 +92,10 @@ function checkSecretsLeak() {
     /tests\/[^/]*security/,
     /tests\/fixtures\//,
     /tests\/spike\//,
+    /tests\/spike\/.+\/runs\//,
+    /tests\/e2e\/harness-e2e/,
+    /tests\/post-tool-enforce-via/, // AWS AKIA fixture (EXAMPLE)
+    /tests\/hook-integration/, // PRIVATE KEY marker fixture for detectSecrets test
   ];
   const ALLOW_LITERALS = [
     /EXAMPLE\b/, // canonical AWS/GCP/Stripe docs fixtures end in EXAMPLE

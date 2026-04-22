@@ -119,13 +119,17 @@ export function pruneState(opts: PruneOptions = {}): PruneReport {
   // These compound over time exactly like state session files.
   const outcomes = pruneDir(outcomesDir, cutoff, dryRun, (n) => n.endsWith('.jsonl'));
 
+  // ADR-002 block-count directory — session-scoped per rule. F-M block-count GC.
+  const blockCountDir = path.join(stateDir, 'enforcement', 'block-count');
+  const blockCounters = pruneDir(blockCountDir, cutoff, dryRun, (n) => n.endsWith('.json'));
+
   return {
-    scanned: state.scanned + outcomes.scanned,
-    pruned: state.pruned + outcomes.pruned,
-    bytesFreed: state.bytes + outcomes.bytes,
+    scanned: state.scanned + outcomes.scanned + blockCounters.scanned,
+    pruned: state.pruned + outcomes.pruned + blockCounters.pruned,
+    bytesFreed: state.bytes + outcomes.bytes + blockCounters.bytes,
     retentionDays: Math.round(retentionMs / (24 * 60 * 60 * 1000)),
     dryRun,
-    sample: [...state.sample, ...outcomes.sample].slice(0, 20),
+    sample: [...state.sample, ...outcomes.sample, ...blockCounters.sample].slice(0, 20),
   };
 }
 

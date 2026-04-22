@@ -22,6 +22,17 @@ const BYPASS_PATH = path.join(STATE_DIR, 'bypass.jsonl');
 const ROLLING_N = 20;
 const VIOLATION_WINDOW_DAYS = 30;
 const BYPASS_WINDOW_DAYS = 7;
+/** H8: jsonl rotation threshold — append 시점마다 체크. */
+const ROTATION_THRESHOLD_BYTES = 10 * 1024 * 1024; // 10 MB
+
+function rotateIfBig(p: string): void {
+  try {
+    const st = fs.statSync(p);
+    if (st.size > ROTATION_THRESHOLD_BYTES) {
+      fs.renameSync(p, `${p}.${Date.now()}`);
+    }
+  } catch { /* missing → no rotate */ }
+}
 
 export function readJsonlSafe<T>(p: string): T[] {
   if (!fs.existsSync(p)) return [];
@@ -42,17 +53,28 @@ export function readJsonlSafe<T>(p: string): T[] {
 export function recordViolation(entry: Omit<ViolationEntry, 'at'>): void {
   try {
     fs.mkdirSync(STATE_DIR, { recursive: true });
+    rotateIfBig(VIOLATIONS_PATH);
     const full: ViolationEntry = { at: new Date().toISOString(), ...entry };
     fs.appendFileSync(VIOLATIONS_PATH, JSON.stringify(full) + '\n');
-  } catch { /* best-effort */ }
+  } catch (e) {
+    // best-effort, 실패 시 debug 로그 (silent swallow 방지)
+    if (process.env.FORGEN_DEBUG_SIGNALS === '1') {
+      console.error(`[forgen:signals] recordViolation failed: ${(e as Error).message}`);
+    }
+  }
 }
 
 export function recordBypass(entry: Omit<BypassEntry, 'at'>): void {
   try {
     fs.mkdirSync(STATE_DIR, { recursive: true });
+    rotateIfBig(BYPASS_PATH);
     const full: BypassEntry = { at: new Date().toISOString(), ...entry };
     fs.appendFileSync(BYPASS_PATH, JSON.stringify(full) + '\n');
-  } catch { /* best-effort */ }
+  } catch (e) {
+    if (process.env.FORGEN_DEBUG_SIGNALS === '1') {
+      console.error(`[forgen:signals] recordBypass failed: ${(e as Error).message}`);
+    }
+  }
 }
 
 export interface SignalInputs {
@@ -66,7 +88,8 @@ export function collectSignals(rule: Rule, inputs: SignalInputs = {}): RuleSigna
   const violations = inputs.violations ?? readJsonlSafe<ViolationEntry>(VIOLATIONS_PATH);
   const bypass = inputs.bypass ?? readJsonlSafe<BypassEntry>(BYPASS_PATH);
 
-  const matchesRule = (ruleId: string): boolean => ruleId === rule.rule_id || rule.rule_id.startsWith(ruleId);
+  // exact match only — M fix: startsWith 으로 prefix 교차 오염되던 부분 제거.
+  const matchesRule = (ruleId: string): boolean => ruleId === rule.rule_id;
 
   const vCutoff30 = now - VIOLATION_WINDOW_DAYS * 24 * 3600 * 1000;
   const recent30 = violations.filter((v) => {

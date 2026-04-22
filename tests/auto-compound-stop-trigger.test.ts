@@ -76,6 +76,7 @@ describe('context-guard Stop → auto-compound spawn', () => {
           ...process.env, HOME: home,
           FORGEN_CWD: home,
           FORGEN_AUTO_COMPOUND_RUNNER_PATH: fakeRunnerPath,
+          FORGEN_TEST: '1', // S2 가드: 테스트 모드에서만 runner override 허용
         },
         encoding: 'utf-8', timeout: 8000,
       });

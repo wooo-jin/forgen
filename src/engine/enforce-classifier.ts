@@ -49,9 +49,20 @@ export function classify(rule: Rule): EnforceProposal {
   const isStyle = STYLE_PATTERN.test(text);
   const isStrong = rule.strength === 'strong' || rule.strength === 'hard';
 
-  // Mech-A PreToolUse — 파괴적 명령 패턴
+  // Mech-A PreToolUse — 파괴적 명령 패턴.
+  // 이전에는 DESTRUCTIVE_PATTERN.source 를 다시 .match() 하여 alternation 의 첫 리터럴
+  // ("credentials") 만 반환하는 버그가 있었음. 이제 rule 텍스트에서 실제 매칭된 구문을
+  // 뽑아 그 구문에 맞는 runtime regex 로 변환.
   if (isDestructive) {
-    const pattern = (DESTRUCTIVE_PATTERN.source.match(/rm\\s\+-rf|DROP\\s\+TABLE|credentials|\\\.env/) ?? [])[0] ?? 'rm\\s+-rf';
+    const matched = text.match(DESTRUCTIVE_PATTERN);
+    const matchedLiteral = matched?.[0] ?? '';
+    // 안전을 위해 매칭된 literal 을 공백 보존 + escape 해서 runtime regex 로 재구성.
+    // 예: "rm -rf" → "rm\s+-rf" (공백 유연); "DROP TABLE" → "DROP\s+TABLE"; ".env" → "\.env"
+    const pattern = matchedLiteral
+      ? matchedLiteral
+          .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // escape regex metachar
+          .replace(/\s+/g, '\\s+') // 공백 하나 이상
+      : 'rm\\s+-rf'; // fallback
     proposed.push({
       mech: 'A',
       hook: 'PreToolUse',
@@ -61,7 +72,7 @@ export function classify(rule: Rule): EnforceProposal {
       },
       block_message: `${rule.rule_id.slice(0, 8)}: ${rule.policy.slice(0, 80)}`,
     });
-    reasoning.push('destructive pattern (rm/DROP/credentials/.env) → Mech-A PreToolUse+tool_arg_regex');
+    reasoning.push(`destructive literal "${matchedLiteral}" → Mech-A PreToolUse+tool_arg_regex ${pattern}`);
   }
 
   // Mech-A Stop — 완료 선언 + 증거 요구 (destructive 와 독립적으로 평가: 하나의 rule 이 둘 다 해당 가능)

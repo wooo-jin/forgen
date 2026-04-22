@@ -315,7 +315,10 @@ async function main(): Promise<void> {
             if (!v || v.kind !== 'pattern_match') continue;
             const pattern = String(v.params?.pattern ?? '');
             if (!pattern) continue;
-            if (!new RegExp(pattern).test(target)) continue;
+            const { compileSafeRegex, safeRegexTest } = await import('./shared/safe-regex.js');
+            const re = compileSafeRegex(pattern);
+            if (!re.regex) { log.debug(`rule ${rule.rule_id} unsafe regex: ${re.reason}`); continue; }
+            if (!safeRegexTest(re.regex, target)) continue;
             recordViolation({
               rule_id: rule.rule_id, session_id: sessionId,
               source: 'post-tool-guard',
