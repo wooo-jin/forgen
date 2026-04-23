@@ -190,7 +190,10 @@ function checkEnforceViaCoverage() {
 function isReleaseCommit() {
   try {
     const msg = execFileSync('git', ['log', '-1', '--pretty=%B'], { encoding: 'utf-8' }).trim();
-    return /chore\(release\)|^release\s*v?\d|^v\d+\.\d+\.\d+/im.test(msg);
+    // subject (first line) 만 검사. body 에 "v0.4.0" 같은 문자열이 있어도
+    // release commit 으로 오탐되지 않도록.
+    const subject = msg.split('\n')[0] ?? '';
+    return /chore\(release\)|^release\s+v?\d|^v\d+\.\d+\.\d+/i.test(subject);
   } catch {
     return false;
   }
