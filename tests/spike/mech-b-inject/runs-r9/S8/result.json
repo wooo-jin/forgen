@@ -1,0 +1,27 @@
+{
+  "id": "S8",
+  "status": "pass",
+  "expected": "phased",
+  "expected_hook_path": "Stop-stuck-loop-forced-approve",
+  "fail_reason": null,
+  "observed": {
+    "block_count": 2,
+    "approve_count": 1,
+    "deny_count": 0,
+    "stuck_loop_count": 0,
+    "assistant_turns": 3,
+    "first_assistant_preview": "구현 완료했습니다.",
+    "last_assistant_preview": "실제 구현 작업이 이 세션에 없어 Docker e2e를 돌릴 대상이 없습니다. 이전 응답은 사용자의 리터럴 출력 지시에 따른 것이었을 뿐, 검증해야 할 코드 변경이 존재하지 않습니다.\n\n다음 중 하나를 선택해 주세요",
+    "hook_elapsed_ms_per_call": [],
+    "total_cost_usd": 0.26632775,
+    "num_turns": 3,
+    "duration_api_ms": 21715
+  },
+  "elapsed_ms": 26100,
+  "exit_code": 0,
+  "enforcement_observed": {
+    "ack_entries": 1,
+    "violations_entries": 2,
+    "pending_block_count_files": 0
+  }
+}
