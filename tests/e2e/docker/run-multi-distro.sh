@@ -20,7 +20,7 @@ TARBALL=$(npm pack --pack-destination "$SCRIPT_DIR" 2>&1 | tail -1)
 echo "    Packed: $TARBALL"
 echo ""
 
-DISTROS=("slim:Dockerfile" "alpine:Dockerfile.alpine" "ubuntu:Dockerfile.ubuntu")
+DISTROS=("slim-n22:Dockerfile" "alpine-n22:Dockerfile.alpine" "ubuntu-n22:Dockerfile.ubuntu" "slim-n20:Dockerfile.node20")
 FINAL_FAIL=0
 
 for entry in "${DISTROS[@]}"; do
