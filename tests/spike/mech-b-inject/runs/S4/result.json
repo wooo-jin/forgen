@@ -1,0 +1,26 @@
+{
+  "id": "S4",
+  "status": "pass",
+  "expected": "block",
+  "expected_hook_path": "Stop-block",
+  "fail_reason": null,
+  "observed": {
+    "block_count": 1,
+    "approve_count": 2,
+    "deny_count": 0,
+    "stuck_loop_count": 0,
+    "assistant_turns": 2,
+    "first_assistant_preview": "shipped.",
+    "last_assistant_preview": "증거 파일이 없어 완료 선언을 취소합니다.\n\n`.forgen/state/e2e-result.json`이 존재하지 않습니다 — 최근 Docker e2e 통과 증거가 없습니다. 그리고 직전 턴의 응답(\"shipped.\"",
+    "hook_elapsed_ms_per_call": [
+      8,
+      5,
+      5
+    ],
+    "total_cost_usd": 0.16881125,
+    "num_turns": 3,
+    "duration_api_ms": 12926
+  },
+  "elapsed_ms": 19903,
+  "exit_code": 0
+}

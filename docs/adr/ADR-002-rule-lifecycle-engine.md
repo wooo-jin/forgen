@@ -1,10 +1,14 @@
 # ADR-002: Rule Lifecycle Engine (T1~T5 + Meta 자기참조적 재분류)
 
-**Status**: Proposed
+**Status**: Accepted (2026-04-22, amended same day)
 **Date**: 2026-04-22
 **Reversibility**: Type 1 (rule 파일의 lifecycle 상태가 on-disk로 지속됨)
 **Related Interview**: Deep Interview v0.4.0 Trust Restoration (Round 9~10)
 **Depends on**: ADR-001 (`enforce_via` 필드가 Meta 재분류의 대상)
+**Implementation evidence**: `src/engine/lifecycle/` (orchestrator + triggers T1~T5 + Meta 양방향) + runtime 통합 (T1: evidence-store.appendEvidence, T3: post-tool-use bypass-detector, T4: state-gc.runDailyT4Decay, T5: rule-store.appendRule, Meta: drift.jsonl → meta-reclassifier). 단위 + 통합 테스트 74건, 전체 회귀 1926/1926 pass.
+
+**Amendments**:
+- 2026-04-22: `MetaPromotion.reason` union 에 `'stuck_loop_force_approve'` 추가. stop-guard 의 stuck-loop 가드가 count>3 에서 force approve 를 수행하고 Mech 강등을 유발하는 경우의 공식 분류. `trigger_stats` 의 `adherence_rate` / `violation_count` 를 optional 로 완화 — reason 에 따라 하나만 의미 있음.
 
 ## Context
 
@@ -134,8 +138,14 @@ export interface MetaPromotion {
   at: string;
   from_mech: 'A' | 'B' | 'C';
   to_mech: 'A' | 'B' | 'C';
-  reason: 'consistent_adherence' | 'repeated_violation' | 'user_override';
-  trigger_stats: { window_n: number; adherence_rate: number };
+  // v0.4.0 amendment (2026-04-22): 'stuck_loop_force_approve' 추가 — stop-guard stuck-loop
+  // 가드가 count>3 에서 force approve 하고 Mech 강등을 trigger 하는 경우.
+  reason:
+    | 'consistent_adherence'
+    | 'repeated_violation'
+    | 'user_override'
+    | 'stuck_loop_force_approve';
+  trigger_stats: { window_n: number; adherence_rate?: number; violation_count?: number };
 }
 
 // Rule 에 추가
@@ -218,7 +228,7 @@ export interface LifecycleEvent {
 | T3 | post-tool-use hook (Bash/Write 후) | rule.policy 와 정반대 패턴이 command/file diff에 감지됨, bypass_count ≥ 5 in 7d | LifecycleEvent(t3) |
 | T4 | daily scheduler (state-gc.ts 확장) | `last_inject_at < now - 90d` | LifecycleEvent(t4) |
 | T5 | rule 생성/수정 시 | 같은 `category` + 상반되는 `policy` 자연어 매칭(간단 heuristic) | LifecycleEvent(t5) |
-| Meta | solution-fitness 주기 평가 | rolling 20 injects 중 violation 0 → A 승급 후보 / violation ≥ 5 → B 강등 후보 | LifecycleEvent(meta) |
+| Meta | drift.jsonl / signals | rolling 20 injects 중 violation 0 → A 승급 후보 / stuck_loop_force_approve 3회+ → B 강등 후보 (구현: meta-reclassifier.scanDriftForDemotion, scanSignalsForPromotion) | LifecycleEvent(meta) |
 
 ### Orchestrator 동작
 

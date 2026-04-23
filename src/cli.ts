@@ -179,13 +179,144 @@ const commands: Command[] = [
   // 수동 재설치: node scripts/postinstall.js
   {
     name: 'uninstall',
-    description: 'Remove forgen from settings [--force]',
+    description: 'Remove forgen from settings [--force] [--purge (also deletes ~/.forgen/)]',
     handler: async (args) => {
       const { handleUninstall } = await import('./core/uninstall.js');
-      await handleUninstall(process.cwd(), { force: args.includes('--force') });
+      await handleUninstall(process.cwd(), {
+        force: args.includes('--force'),
+        purge: args.includes('--purge'),
+      });
+    },
+  },
+  {
+    name: 'rule',
+    description: 'Rule management (list|suppress|activate|scan|health-scan|classify)',
+    handler: async (args) => {
+      await handleRuleNamespace(args);
+    },
+  },
+  {
+    name: 'classify-enforce',
+    aliases: ['rule-classify'],
+    description: '[alias: rule classify] Propose enforce_via for rules (ADR-001 migration).',
+    handler: async (args) => {
+      const { handleClassifyEnforce } = await import('./engine/classify-enforce-cli.js');
+      await handleClassifyEnforce(args);
+    },
+  },
+  {
+    name: 'rule-meta-scan',
+    description: '[alias: rule health-scan] Scan drift for stuck-loop events and demote Mech-A rules.',
+    handler: async (args) => {
+      const { handleRuleMetaScan } = await import('./engine/lifecycle/meta-cli.js');
+      await handleRuleMetaScan(args);
+    },
+  },
+  {
+    name: 'lifecycle-scan',
+    description: '[alias: rule scan] Run all rule lifecycle triggers (T1~T5 + Meta).',
+    handler: async (args) => {
+      const { handleLifecycleScan } = await import('./engine/lifecycle/lifecycle-cli.js');
+      await handleLifecycleScan(args);
+    },
+  },
+  {
+    name: 'stats',
+    description: 'One-screen dashboard: active rules, corrections, blocks/bypass/drift (7d).',
+    handler: async (args) => {
+      const { handleStats } = await import('./core/stats-cli.js');
+      await handleStats(args);
+    },
+  },
+  {
+    name: 'last-block',
+    description: 'Show the most recent Mech-A/B block event with rule detail (R6-UX2).',
+    handler: async (_args) => {
+      const { handleInspect } = await import('./core/inspect-cli.js');
+      await handleInspect(['violations', '--last', '1']);
+    },
+  },
+  {
+    name: 'suppress-rule',
+    description: '[alias: rule suppress] Disable a rule by id/prefix. Hard rules refused.',
+    handler: async (args) => {
+      const { handleSuppressRule } = await import('./engine/rule-toggle-cli.js');
+      await handleSuppressRule(args);
+    },
+  },
+  {
+    name: 'activate-rule',
+    description: '[alias: rule activate] Re-activate a suppressed rule by id/prefix.',
+    handler: async (args) => {
+      const { handleActivateRule } = await import('./engine/rule-toggle-cli.js');
+      await handleActivateRule(args);
     },
   },
 ];
+
+// ---------------------------------------------------------------------------
+// `forgen rule <subcommand>` — user-facing namespace (R9-IA1)
+// Thin dispatcher that routes to existing handlers. Top-level legacy commands
+// (suppress-rule, activate-rule, lifecycle-scan, rule-meta-scan, classify-enforce)
+// remain as backward-compatible aliases.
+// ---------------------------------------------------------------------------
+async function handleRuleNamespace(args: string[]): Promise<void> {
+  const sub = args[0];
+  const rest = args.slice(1);
+
+  if (!sub || sub === 'help' || sub === '--help' || sub === '-h') {
+    console.log(`
+  forgen rule — manage personalization rules
+
+  Usage:
+    forgen rule list                       List all rules (alias: inspect rules)
+    forgen rule suppress <id-or-prefix>    Disable a rule (hard rules refused)
+    forgen rule activate <id-or-prefix>    Re-activate a suppressed rule
+    forgen rule scan [--apply]             Run lifecycle triggers (promote/demote/retire)
+    forgen rule health-scan [--apply]      Scan drift → Mech downgrade candidates
+    forgen rule classify [--apply] [--force]
+                                           Propose enforce_via for legacy rules
+`);
+    return;
+  }
+
+  switch (sub) {
+    case 'list': {
+      const { handleInspect } = await import('./core/inspect-cli.js');
+      await handleInspect(['rules', ...rest]);
+      return;
+    }
+    case 'suppress': {
+      const { handleSuppressRule } = await import('./engine/rule-toggle-cli.js');
+      await handleSuppressRule(rest);
+      return;
+    }
+    case 'activate': {
+      const { handleActivateRule } = await import('./engine/rule-toggle-cli.js');
+      await handleActivateRule(rest);
+      return;
+    }
+    case 'scan': {
+      const { handleLifecycleScan } = await import('./engine/lifecycle/lifecycle-cli.js');
+      await handleLifecycleScan(rest);
+      return;
+    }
+    case 'health-scan': {
+      const { handleRuleMetaScan } = await import('./engine/lifecycle/meta-cli.js');
+      await handleRuleMetaScan(rest);
+      return;
+    }
+    case 'classify': {
+      const { handleClassifyEnforce } = await import('./engine/classify-enforce-cli.js');
+      await handleClassifyEnforce(rest);
+      return;
+    }
+    default: {
+      console.error(`[forgen] Unknown rule subcommand: ${sub}\n  Run "forgen rule help" for options.`);
+      process.exit(1);
+    }
+  }
+}
 
 /** 최소 편집 거리 (유사 명령 제안용) */
 function levenshtein(a: string, b: string): number {
@@ -320,8 +451,12 @@ function printHelp() {
   Commands:
     forgen forge                    Personalize your coding profile
     forgen onboarding               Run 2-question onboarding
-    forgen inspect [profile|rules|evidence|session]
-                                    Inspect v1 state
+    forgen inspect [profile|rules|corrections|session]
+                                    Inspect v1 state (alias: evidence → corrections)
+    forgen rule <list|suppress|activate|scan|health-scan|classify>
+                                    Rule management (see: forgen rule help)
+    forgen stats                    One-screen trust-layer dashboard
+    forgen last-block               Show the most recent block event
     forgen compound                 Manage accumulated knowledge
     forgen dashboard                Compound system dashboard
     forgen me                       Personal dashboard
@@ -330,7 +465,7 @@ function printHelp() {
     forgen mcp                      MCP server management
     forgen skill promote|list       Skill management
     forgen notepad show|add|clear   Session notepad
-    forgen doctor                   System diagnostics
+    forgen doctor [--prune-state]   System diagnostics (+ daily T4 decay on prune)
     forgen uninstall                Remove forgen
 
   Harness mode (default):

@@ -3,18 +3,18 @@
 </p>
 
 <p align="center">
-  <strong>The Claude Code personalization harness.</strong><br/>
-  <strong>The more you use Claude, the better it knows you.</strong>
+  <strong>When Claude says "done", forgen makes it prove it.</strong><br/>
+  Turn-level self-verification + personalized rules, at <strong>$0 extra API cost</strong>.
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package//forgen"><img src="https://img.shields.io/npm/v//forgen.svg" alt="npm version"/></a>
+  <a href="https://www.npmjs.com/package/@wooojin/forgen"><img src="https://img.shields.io/npm/v/@wooojin/forgen.svg" alt="npm version"/></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"/></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg" alt="Node.js >= 20"/></a>
 </p>
 
 <p align="center">
-  <a href="#what-happens-when-you-use-forgen">What Happens</a> &middot;
+  <a href="#the-first-block-30-seconds">First Block</a> &middot;
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#how-it-works">How It Works</a> &middot;
   <a href="#4-axis-personalization">4-Axis</a> &middot;
@@ -32,7 +32,47 @@
 
 ---
 
+## The first block (30 seconds)
+
+You've been burned: Claude says "tests pass, implementation done" — you run it — it doesn't work. forgen closes that gap.
+
+```
+You:     "Implement the login handler."
+Claude:  ...makes edits...
+Claude:  "구현 완료했습니다."
+
+[forgen:stop-guard/L1-e2e-before-done]
+Docker e2e 증거(~/.forgen/state/e2e-result.json, 1시간 이내)가 없습니다.
+지금 실행 후 재응답하라.
+
+Claude:  "완료 선언을 취소합니다. 증거 파일이 없습니다. e2e 를 먼저 실행합니다..."
+         ...runs bash tests/e2e/docker/run-test.sh...
+         "63/63 pass. 구현 완료했습니다."
+
+[forgen] ✓ approved
+```
+
+**What just happened**: Claude's Stop hook was blocked by a rule you defined (`L1-e2e-before-done`). Claude read the block `reason`, retracted its premature claim, produced evidence, and re-submitted. **Zero extra API calls** — it all happened in the same session turn Claude was going to produce anyway.
+
+This is **Mech-B self-check prompt-inject**. It works because Claude Code's Stop hook accepts `decision: "block"` + `reason`, and Claude in the next turn reads that reason as input. We verified it end-to-end on 10 scenarios at $1.74 total cost ([A1 spike report](docs/spike/mech-b-a1-verification-report.md)).
+
+🎬 **See it happen** (27 seconds):
+
+```bash
+# Watch the full loop live — actual hook, actual rule, actual block/approve cycle
+bash docs/demo/mech-b-demo.sh
+
+# Or replay the pre-recorded asciinema cast
+asciinema play docs/demo/mech-b-block-unblock.cast
+```
+
+See [`docs/demo/README.md`](docs/demo/README.md) for what's real vs simulated in the demo.
+
+---
+
 ## Two developers. Same Claude. Completely different behavior.
+
+The Trust Layer above is one pillar. The other is personalization — still the reason you'd keep forgen around after the first block.
 
 Developer A is careful. They want Claude to run all tests, explain reasoning, and ask before touching anything outside the current file.
 
@@ -48,7 +88,7 @@ fix the session handler? Here's           timeout not covered. Done."
 my analysis of each..."
 ```
 
-Forgen makes this happen. It profiles your work style, learns from your corrections, and renders personalized rules that Claude follows every session.
+Forgen profiles your work style, learns from your corrections, and renders personalized rules that Claude follows every session.
 
 ---
 
@@ -451,11 +491,25 @@ forgen forge --export           # Export profile
 ### Inspection
 
 ```bash
+forgen stats                    # One-screen trust-layer dashboard (rules, corrections, blocks 7d)
+forgen last-block               # Most recent block event with rule detail
 forgen inspect profile          # 4-axis profile with packs and facets
 forgen inspect rules            # Active and suppressed rules
-forgen inspect evidence         # Correction history
+forgen inspect corrections      # Correction history (alias: evidence)
 forgen inspect session          # Current session state
+forgen inspect violations       # Recent block events (--last N)
 forgen me                       # Personal dashboard (shortcut for inspect profile)
+```
+
+### Rule management
+
+```bash
+forgen rule list                # List active + suppressed rules
+forgen rule suppress <id>       # Disable a rule (hard rules refused)
+forgen rule activate <id>       # Re-activate a suppressed rule
+forgen rule scan [--apply]      # Run lifecycle triggers (promote/demote/retire)
+forgen rule health-scan         # Scan drift → Mech downgrade candidates
+forgen rule classify            # Propose enforce_via for legacy rules
 ```
 
 ### Knowledge management
@@ -478,6 +532,7 @@ forgen skill list               # List promoted skills
 ```bash
 forgen init                     # Initialize project
 forgen doctor                   # System diagnostics (10 categories + harness maturity)
+forgen doctor --prune-state     # Daily hygiene: state GC + T4 rule decay (90d idle → retire)
 forgen dashboard                # Knowledge overview (6 sections)
 forgen config hooks             # View hook status + context budget
 forgen config hooks --regenerate # Regenerate hooks
@@ -487,6 +542,37 @@ forgen mcp templates            # Show available templates
 forgen notepad show             # View session notepad
 forgen uninstall                # Remove forgen cleanly
 ```
+
+### Rule lifecycle (v0.4.0, ADR-001/002)
+
+```bash
+forgen classify-enforce          # Preview enforce_via proposals for existing rules
+forgen classify-enforce --apply  # Save proposed enforce_via (skips already-set rules)
+forgen classify-enforce --apply --force  # Overwrite existing enforce_via
+forgen rule-meta-scan            # Preview Mech demotion candidates (drift.jsonl → A→B→C)
+forgen rule-meta-scan --apply    # Persist demotions + meta_promotions history
+forgen lifecycle-scan            # Preview T2~T5 + Meta (T1 fires inline on correction, not via CLI)
+forgen lifecycle-scan --apply    # Apply all lifecycle state transitions
+```
+
+Rule enforcement is 3-axis (ADR-001):
+- **Mech-A** (hook-BLOCK) — mechanical checks (`rm -rf`, artifact presence). Violation blocks immediately.
+- **Mech-B** (self-check) — natural-language rules. Stop hook feeds self-check question back to Claude via `decision: "block"` + `reason`. Zero extra API cost.
+- **Mech-C** (drift-measure) — long-term bias tracking only.
+
+Rule lifecycle (ADR-002): rules auto-flag / suppress / retire / merge / supersede based on T1~T5 + Meta signals. Details in [docs/adr/ADR-002-rule-lifecycle-engine.md](docs/adr/ADR-002-rule-lifecycle-engine.md).
+
+### Release self-gate (v0.4.0, ADR-003)
+
+Three CI gates prove forgen does not violate its own L1 rules before release:
+
+```bash
+node scripts/self-gate.cjs          # Static: mock-in-prod, secrets, enforce_via, release-artifact
+node scripts/self-gate-runtime.cjs  # Runtime smoke: 6 hook scenarios
+node scripts/self-gate-release.cjs  # Tag-only: version/tag/CHANGELOG/dist/e2e-report consistency
+```
+
+Triggered by `.github/workflows/self-gate.yml` on push main / PR main / tag v*. Dogfood opt-in: see [.forgen/README.md](.forgen/README.md).
 
 ### MCP tools (available to Claude during sessions)
 

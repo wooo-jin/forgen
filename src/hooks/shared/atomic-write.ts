@@ -132,12 +132,25 @@ export function atomicWriteText(
   }
 }
 
-/** JSON 파일을 안전하게 읽기 (파싱 실패 시 fallback 반환) */
+/**
+ * JSON 파일을 안전하게 읽기 (파싱 실패 시 fallback 반환).
+ *
+ * R4-B3 (2026-04-22): UTF-8 BOM (﻿) prefix 제거 — Windows 메모장 등으로 저장된
+ *   rule/settings JSON 이 BOM 으로 시작해 JSON.parse 가 silent 실패하던 문제.
+ * R4-SKIP: FORGEN_DEBUG_SIGNALS=1 일 때 파싱 실패를 stderr 로 노출 — silent
+ *   누락을 운영자가 추적 가능하도록.
+ */
 export function safeReadJSON<T>(filePath: string, fallback: T): T {
   try {
     if (fs.existsSync(filePath)) {
-      return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as T;
+      let raw = fs.readFileSync(filePath, 'utf-8');
+      if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1); // strip BOM
+      return JSON.parse(raw) as T;
     }
-  } catch { /* JSON parse failure — return fallback */ }
+  } catch (e) {
+    if (process.env.FORGEN_DEBUG_SIGNALS === '1') {
+      process.stderr.write(`[forgen:safeReadJSON] ${filePath} parse failed: ${(e as Error).message}\n`);
+    }
+  }
   return fallback;
 }

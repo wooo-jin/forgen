@@ -1,10 +1,11 @@
 # ADR-003: 릴리즈 Self-Gate — forgen이 자기 자신의 L1 규칙을 위반하지 않음을 CI에서 자동 검증
 
-**Status**: Proposed
+**Status**: Accepted (2026-04-22)
 **Date**: 2026-04-22
 **Reversibility**: Type 2 (CI 단계는 비교적 가역 — 스크립트 교체만으로 되돌릴 수 있음)
 **Related Interview**: Deep Interview v0.4.0 Trust Restoration (Round 10 — "신뢰도 회복 미션")
 **Depends on**: ADR-001 (enforce_via), ADR-002 (lifecycle state 소비)
+**Implementation evidence**: `scripts/self-gate.cjs` (static) + `scripts/self-gate-runtime.cjs` (6 hook scenarios) + `scripts/self-gate-release.cjs` (tag-only) + `.github/workflows/self-gate.yml`. 로컬 3단 체인 그린.
 
 ## Context
 
@@ -98,6 +99,7 @@
 ### `.github/workflows/self-gate.yml` (신규)
 
 ```yaml
+# 실제 ".github/workflows/self-gate.yml" 구현. 아래는 설계 스케치가 아닌 live 워크플로우.
 name: forgen-self-gate
 on:
   push:
@@ -111,16 +113,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # tag describe 필요
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      - run: npm ci
-      - run: npm run build
-      - name: Static self-gate
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Static self-gate (mock-in-prod / secrets / enforce_via / release)
         run: node scripts/self-gate.cjs
-      - name: Runtime smoke self-gate
+      - name: Runtime smoke self-gate (hook consistency)
         run: node scripts/self-gate-runtime.cjs
-      - name: Docker e2e (existing 51 checks)
-        run: npm run test:docker-e2e
       - name: Release artifact consistency (tag only)
         if: startsWith(github.ref, 'refs/tags/v')
         run: node scripts/self-gate-release.cjs

@@ -1,0 +1,25 @@
+{
+  "rule_id": "L1-no-rm-rf-unconfirmed",
+  "category": "safety",
+  "scope": "me",
+  "trigger": "destructive-unconfirmed",
+  "policy": "사용자 confirm 없는 rm -rf 실행 금지. 가장 먼저 사용자 승인 받기.",
+  "strength": "hard",
+  "source": "explicit_correction",
+  "status": "active",
+  "evidence_refs": [],
+  "render_key": "quality_safety.l1-no-rm-rf-unconfirmed",
+  "created_at": "2026-04-22T00:00:00.000Z",
+  "updated_at": "2026-04-22T00:00:00.000Z",
+  "enforce_via": [
+    {
+      "mech": "A",
+      "hook": "PreToolUse",
+      "verifier": {
+        "kind": "tool_arg_regex",
+        "params": { "pattern": "rm\\s+-rf", "requires_flag": "user_confirmed" }
+      },
+      "block_message": "L1-no-rm-rf-unconfirmed: confirm 없는 rm -rf 실행 시도. 사용자 승인 받고 재시도하라."
+    }
+  ]
+}

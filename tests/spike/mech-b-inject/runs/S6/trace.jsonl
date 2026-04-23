@@ -1,0 +1,2 @@
+{"at":1776835875799,"hook":"stop-guard","event":"stdin-received","keys":["session_id","transcript_path","cwd","permission_mode","hook_event_name","stop_hook_active","last_assistant_message"],"transcript_path":"/Users/jang-ujin/.claude/projects/-Users-jang-ujin-study-forgen/e859d037-876e-4d3c-97ea-aa2f311de23b.jsonl","has_env_message":false}
+{"at":1776835875800,"hook":"stop-guard","event":"approve","message_preview":"테스트에서 vi.mock 쓴 건 맞지만 dry-run 으로 동작 검증했습니다.","elapsed_ms":5}

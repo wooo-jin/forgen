@@ -5,6 +5,70 @@ All notable changes to forgen will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-23
+
+### v0.4.0 — The Trust Layer
+
+**When Claude says "done", forgen makes it prove it.** v0.4.0 adds turn-level self-verification at the Stop hook: Claude's completion claims get checked against rules you define, and blocks are fed back as `reason` that Claude reads and complies with on the next turn — **zero extra API calls**. Verified end-to-end on 10 scenarios at $1.74 total ([A1 spike report](docs/spike/mech-b-a1-verification-report.md)).
+
+Built on top of the v0.3.x personalization core (4-axis profile + compound knowledge + rule rendering): the Trust Layer = 3-axis enforcement (Mech-A/B/C) + rule lifecycle (T1-T5 + Meta) + release self-gate. Interview rounds 9~10 mission "forgen 이 자기 규칙을 forgen 자신에게 강제 적용" achieved — this repo's own development was stopped mid-commit by its own L1 rule when the maintainer claimed "완결" without running Docker e2e (evidence preserved in `.forgen/state/enforcement/violations.jsonl`).
+
+**ADR-001 — Mech-A/B/C 3축 강제 메커니즘** (Accepted)
+- Mech-A (hook-BLOCK): 기계 판정 가능 규칙 — PreToolUse deny / Stop artifact_check.
+- Mech-B (self-check prompt-inject): 자연어 판정 규칙 — Stop hook `decision:"block"` + `reason` 으로 Claude 자가점검 강제. **β1 ($0): 외부 LLM 호출 없음.**
+- Mech-C (drift-measure): 정량 판정 불가 규칙 — 장기 편향만 측정.
+- A1 검증 스파이크 10/10 PASS ($1.74, 3분): block 수용률 1.00, FP 0.00, hook p95 7ms, 추가 API 0.
+
+**신규 타입** (`src/store/types.ts`):
+- `EnforcementMech`, `HookPoint`, `VerifierSpec`, `EnforceSpec` — `Rule.enforce_via` 에 붙음 (optional, 기존 rule 하위 호환).
+- `EnforceSpec.trigger_keywords_regex` / `trigger_exclude_regex` / `system_tag` — Stop hook 전용 발화 조건.
+- `LifecyclePhase`, `LifecycleState`, `MetaPromotion` — `Rule.lifecycle` 에 붙음.
+
+**신규 Hook**:
+- `src/hooks/stop-guard.ts` — Stop hook. Production `rulesFromStore(loadActiveRules())` 로드, spike scenarios.json fallback. `last_assistant_message` 직접 read. stuck-loop guard (threshold 3 초과 시 force approve + drift 이벤트). `compoundCritical: true` (보호 hook).
+- `src/hooks/shared/hook-response.ts::blockStop(reason, systemMessage?)` helper.
+
+**ADR-002 — Rule Lifecycle Engine** (Accepted)
+- T1 explicit_correction: `evidence-store.appendEvidence` → `detectT1` → rule retire/supersede/flag. axis + render_key 이중 매칭으로 FP 차단.
+- T2 repeated_violation: 30d rolling window `violations_30d ≥ 3 AND rate > 0.3` → flag. 데이터 소스: `~/.forgen/state/enforcement/violations.jsonl` (stop-guard block 시 자동 append).
+- T3 user_bypass: `post-tool-use` 에서 `bypass-detector.scanForBypass` → `recordBypass`. 7d `bypass_count ≥ 5` → suppress.
+- T4 time_decay: `state-gc.runDailyT4Decay` — `forgen doctor --prune-state` 실행 시 90d 미주입 rule retire (별도 scheduler 없음; 사용자가 명시적으로 실행).
+- T5 conflict_detected: `rule-store.appendRule` 에서 T5 감지, 양쪽 `conflict_refs` 기록.
+- Meta 양방향: drift.jsonl 누적 → 강등 (A→B→C); rolling 20 injects + 0 violations → 승급 (B→A, C→B).
+- Orchestrator `applyEvent` / `foldEvents` pure — rule 파일 쓰기는 호출자 책임.
+- `src/store/rule-store.ts::markRulesInjected` — `v1-bootstrap` 이 renderRules 후 호출해 Meta 롤링 카운터를 채움.
+
+**ADR-003 — Release Self-Gate** (Accepted)
+- `.github/workflows/self-gate.yml` — push main / PR main / tag v* 에서 3-stage 검증.
+- `scripts/self-gate.cjs` — 정적 스캔: mock-in-production, secrets-leak (AWS 공식 EXAMPLE fixture allow list), enforce_via-missing, release-artifact.
+- `scripts/self-gate-runtime.cjs` — 6 hook 시나리오 smoke (완료 선언 block / retraction approve / shipped block / mock-context approve 등). 격리 HOME.
+- `scripts/self-gate-release.cjs` — tag-only: version/tag match, CHANGELOG section, dist freshness, .forgen-release/e2e-report.json.
+
+**신규 CLI**:
+- `forgen rule <list|suppress|activate|scan|health-scan|classify>` — 규칙 관리 네임스페이스. 기존 플랫 커맨드(suppress-rule, activate-rule, lifecycle-scan, rule-meta-scan, classify-enforce)는 하위 호환 alias 로 유지.
+- `forgen stats` — 한 화면 대시보드 (active rules, corrections, blocks/bypass/drift 7d, retired 7d, last extraction). 기존 jsonl 집계; 신규 telemetry 없음.
+- `forgen inspect corrections` — `forgen inspect evidence` 의 사용자 친화 이름. evidence 는 alias 로 유지.
+- `forgen last-block` — 가장 최근 block 이벤트 상세.
+
+**내부 CLI (하위 호환, alias 로 유지)**:
+- `forgen classify-enforce [--apply] [--force]` → `forgen rule classify`.
+- `forgen rule-meta-scan [--apply]` → `forgen rule health-scan`.
+- `forgen lifecycle-scan [--apply]` → `forgen rule scan`.
+
+**Upgrade notes (v0.3.x → v0.4.0)**:
+- 첫 `forgen` 실행 시 기존 rule 파일 (`~/.forgen/me/rules/*.json`) 에 `lifecycle` 블록이 자동 주입됩니다 (inject_count, phase='active' 등). 기존 필드는 보존됨.
+- 프로젝트 로컬 `.forgen/rules/*.json` 이 자동 로드됩니다 (runtime 병합). 팀 dogfood 경로. 테스트/격리 필요 시 `FORGEN_DISABLE_PROJECT_RULES=1`.
+- `FORGEN_USER_CONFIRMED=1` 으로 Mech-A PreToolUse 우회 시 violations.jsonl 에 `kind:'correction'` audit 엔트리 기록.
+
+**운영 지표**:
+- 전체 회귀 1973/1973 pass (169 files), TypeScript clean.
+- forgen doctor 20/20 hooks active; legacy `~/.forgen/rules/` orphan 감지 추가.
+- Self-gate 정적 ✓ + 런타임 7/7 (SG-ACK round-trip 포함); Docker e2e 77/77 (Phase 9 R9 전체 검증).
+- `npm pack` tarball 539.3 kB, 332 파일, v0.4.0 메타데이터 확인.
+
+**관측성**:
+- `acknowledgments.jsonl` 신규 — Mech-B block → retract → pass 루프가 실제 작동한 세션 기록. `forgen stats` 의 `X% acknowledged` 라벨로 집계.
+
 ## [0.3.2] - 2026-04-21
 
 ### Security — Audit findings landed

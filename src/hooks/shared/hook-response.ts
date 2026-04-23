@@ -67,6 +67,25 @@ export function ask(reason: string): string {
 }
 
 /**
+ * Stop hook only — block the agent from stopping and feed a self-check
+ * question back to Claude so the current session resumes with new guidance.
+ *
+ * `reason` becomes the next-turn content (Claude reads this verbatim), while
+ * `systemMessage` is auxiliary context rendered alongside. Put the whole
+ * self-check question in `reason`; keep `systemMessage` to a short rule tag.
+ *
+ * Source: Stop hook spec — `decision: "block"` "prevents stopping and continues the agent's work".
+ */
+export function blockStop(reason: string, systemMessage?: string): string {
+  return JSON.stringify({
+    continue: true,
+    decision: 'block',
+    reason,
+    ...(systemMessage ? { systemMessage } : {}),
+  });
+}
+
+/**
  * fail-open with error tracking: 에러 시 안전하게 통과하되, 실패 정보를 기록.
  * forgen doctor의 Hook Health 섹션에서 실패 이력을 표시할 수 있도록 JSONL 로그에 기록.
  *

@@ -14,8 +14,9 @@ import type {
   QualityFacets,
   AutonomyFacets,
 } from '../store/types.js';
-import { createEvidence, saveEvidence } from '../store/evidence-store.js';
+import { createEvidence, appendEvidence } from '../store/evidence-store.js';
 import { createRule, saveRule } from '../store/rule-store.js';
+import { classify, applyProposal } from '../engine/enforce-classifier.js';
 
 // ── Correction → Evidence + Temporary Rule ──
 
@@ -40,7 +41,7 @@ export function processCorrection(req: CorrectionRequest): CorrectionResult {
       direction: req.kind === 'avoid-this' ? 'opposite' : 'same',
     },
   });
-  saveEvidence(evidence);
+  appendEvidence(evidence); // T1 lifecycle trigger fires here for explicit_correction
 
   // fix-now, avoid-this → temporary session rule
   let temporaryRule: Rule | null = null;
@@ -57,6 +58,12 @@ export function processCorrection(req: CorrectionRequest): CorrectionResult {
       evidence_refs: [evidence.evidence_id],
       render_key: `${req.axis_hint ?? 'workflow'}.${req.target.toLowerCase().replace(/\s+/g, '-').slice(0, 30)}`,
     });
+    // ADR-001 auto-classify on creation — 교정 즉시 enforce_via 가 붙어야 다음 턴부터 Mech-A/B 발화.
+    // 기존 `forgen classify-enforce --apply` 수동 경로를 유지하되, 신규 rule 은 창조 시점에 자동 populate.
+    try {
+      const proposal = classify(temporaryRule);
+      temporaryRule = applyProposal(temporaryRule, proposal);
+    } catch { /* fail-open: classify 실패는 rule 저장 자체를 막지 않음 */ }
     saveRule(temporaryRule);
   }
 

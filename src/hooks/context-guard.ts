@@ -12,6 +12,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createLogger } from '../core/logger.js';
 import { readStdinJSON } from './shared/read-stdin.js';
@@ -100,7 +101,7 @@ export async function main(): Promise<void> {
   const _hookStart = Date.now();
   let _hookEvent = 'UserPromptSubmit';
   try {
-  const input = await readStdinJSON<{ prompt?: string; session_id?: string; stop_hook_type?: string; error?: string }>();
+  const input = await readStdinJSON<{ prompt?: string; session_id?: string; stop_hook_type?: string; error?: string; transcript_path?: string; cwd?: string }>();
   if (!isHookEnabled('context-guard')) {
     console.log(approve());
     return;
@@ -156,6 +157,15 @@ export async function main(): Promise<void> {
     // 정상 종료 시: 의미 있는 세션이었으면 compound 안내/자동 트리거
     if (input.stop_hook_type === 'user' || input.stop_hook_type === 'end_turn') {
       const state = loadContextState(sessionId);
+
+      // ADR-002 T1 — 세션 중간에 교정이 들어와도 session-scoped rule 이 me-scope 으로
+      // 승급되도록 Stop 에서 직접 auto-compound-runner 를 debounced 로 트리거.
+      // 'forgen' CLI 를 통하지 않는 사용자 (claude 직접 실행) 에게도 교정이 유실되지 않는 보장.
+      // dedup: last-auto-compound.json 의 sessionId + 5분 cooldown.
+      try {
+        await maybeSpawnAutoCompound(sessionId, input.transcript_path, state.promptCount);
+      } catch (e) { log.debug('auto-compound Stop trigger 실패', e); }
+
       if (state.promptCount >= 20) {
         // 20+ prompts: auto-trigger compound by writing marker
         try {
@@ -267,6 +277,71 @@ function buildSessionSummary(sessionId: string, promptCount: number): string {
 
 // forge-loop 상태 파일 경로
 const FORGE_LOOP_STATE_PATH = path.join(STATE_DIR, 'forge-loop.json');
+
+/**
+ * Stop hook 에서 auto-compound-runner 를 debounced 로 spawn.
+ *
+ * 호출 조건:
+ *   - promptCount ≥ 10 (의미있는 세션)
+ *   - transcript_path 유효
+ *   - last-auto-compound.json 의 sessionId 가 다르거나 5분 전
+ *
+ * dedup 파일은 session-recovery hook 과 공유되어 double-run 방지.
+ * fire-and-forget (detached) — hook timeout 과 무관.
+ */
+const AUTO_COMPOUND_COOLDOWN_MS = 5 * 60 * 1000; // 5 min
+
+async function maybeSpawnAutoCompound(
+  sessionId: string,
+  transcriptPath: string | undefined,
+  promptCount: number,
+): Promise<void> {
+  if (!transcriptPath || promptCount < 10) return;
+
+  const markerPath = path.join(STATE_DIR, 'last-auto-compound.json');
+  try {
+    const raw = fs.readFileSync(markerPath, 'utf-8');
+    const parsed = JSON.parse(raw) as { sessionId?: string; completedAt?: string };
+    if (parsed.sessionId === sessionId) {
+      const last = parsed.completedAt ? Date.parse(parsed.completedAt) : 0;
+      if (Number.isFinite(last) && Date.now() - last < AUTO_COMPOUND_COOLDOWN_MS) return;
+    }
+  } catch { /* first time or corrupt — proceed */ }
+
+  const { spawn: spawnProcess } = await import('node:child_process');
+  const cwd = process.env.FORGEN_CWD ?? process.env.COMPOUND_CWD ?? process.cwd();
+
+  // 기본: 번들된 auto-compound-runner. 프로덕션 빌드는 이 경로만 실행.
+  const defaultRunner = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'core', 'auto-compound-runner.js');
+
+  // 테스트 주입 경로 — FORGEN_TEST=1 게이트 + 경로 containment (~/.forgen 또는 /tmp 하위만 허용).
+  // FORGEN_TEST 없이 FORGEN_AUTO_COMPOUND_RUNNER_PATH 만 설정되어도 무시 → 임의 코드 실행 방지.
+  let runnerPath = defaultRunner;
+  const override = process.env.FORGEN_AUTO_COMPOUND_RUNNER_PATH;
+  if (override && process.env.FORGEN_TEST === '1') {
+    const resolved = path.resolve(override);
+    const homeDir = os.homedir();
+    const allowed = [
+      path.join(homeDir, '.forgen'),
+      os.tmpdir(), // 플랫폼별 /tmp, /var/folders/... 등
+      '/tmp',
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..'),
+    ];
+    if (allowed.some((root) => resolved === root || resolved.startsWith(root + path.sep))) {
+      runnerPath = resolved;
+    } else {
+      log.debug(`FORGEN_AUTO_COMPOUND_RUNNER_PATH 무시 — ${resolved} 가 허용 루트 밖`);
+    }
+  } else if (override) {
+    log.debug('FORGEN_AUTO_COMPOUND_RUNNER_PATH 무시 — FORGEN_TEST=1 가 필요');
+  }
+  const child = spawnProcess('node', [runnerPath, cwd, transcriptPath, sessionId], {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+  log.debug(`Stop-triggered auto-compound 시작: ${sessionId} (${promptCount} prompts)`);
+}
 
 // forge-loop 차단 안전 상한 (무한 루프 방지)
 const FORGE_LOOP_MAX_BLOCKS = 30;

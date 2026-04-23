@@ -288,6 +288,66 @@ async function main(): Promise<void> {
   // 6. Compound negative signal (non-blocking)
   try { checkCompoundNegative(toolName, toolResponse, sessionId); } catch (e) { log.debug('compound negative check 실패', e); }
 
+  // 6a+b. ADR-001 Mech-A PostToolUse + T3 bypass — single rule load, 두 dispatcher 공유.
+  // R2-P perf: 이전에는 6a, 6b 각각 loadActiveRules() 재호출 → file read 2배.
+  if (toolName === 'Write' || toolName === 'Edit' || toolName === 'Bash') {
+    const target = ((): string => {
+      const c = (toolInput as { content?: unknown }).content;
+      if (typeof c === 'string') return c;
+      const ns = (toolInput as { new_string?: unknown }).new_string;
+      if (typeof ns === 'string') return ns;
+      const cmd = (toolInput as { command?: unknown }).command;
+      if (typeof cmd === 'string') return cmd;
+      return '';
+    })() || toolResponse;
+
+    if (target) {
+      try {
+        const [
+          { loadActiveRules },
+          { recordViolation, recordBypass },
+          { scanForBypass },
+          { compileSafeRegex, safeRegexTest },
+        ] = await Promise.all([
+          import('../store/rule-store.js'),
+          import('../engine/lifecycle/signals.js'),
+          import('../engine/lifecycle/bypass-detector.js'),
+          import('./shared/safe-regex.js'),
+        ]);
+        const rules = loadActiveRules();
+
+        // Mech-A pattern_match dispatcher
+        for (const rule of rules) {
+          for (const spec of rule.enforce_via ?? []) {
+            if (spec.hook !== 'PostToolUse' || spec.mech !== 'A') continue;
+            const v = spec.verifier;
+            if (!v || v.kind !== 'pattern_match') continue;
+            const pattern = String(v.params?.pattern ?? '');
+            if (!pattern) continue;
+            const re = compileSafeRegex(pattern);
+            if (!re.regex) { log.debug(`rule ${rule.rule_id} unsafe regex: ${re.reason}`); continue; }
+            if (!safeRegexTest(re.regex, target)) continue;
+            recordViolation({
+              rule_id: rule.rule_id, session_id: sessionId,
+              source: 'post-tool-guard',
+              kind: 'block',
+              message_preview: target.slice(0, 120),
+            });
+            messages.push(
+              `<compound-rule-violation>\n[Forgen] Rule ${rule.rule_id.slice(0, 8)} pattern matched in ${toolName} output.\n${spec.block_message ?? rule.policy.slice(0, 120)}\n</compound-rule-violation>`
+            );
+          }
+        }
+
+        // T3 bypass detection (same rules, same target)
+        const candidates = scanForBypass({ rules, tool_name: toolName, tool_output: target, session_id: sessionId });
+        for (const c of candidates) {
+          recordBypass({ rule_id: c.rule_id, session_id: c.session_id, tool: c.tool, pattern_preview: c.pattern_preview });
+        }
+      } catch (e) { log.debug('enforce_via/bypass post-tool dispatch 실패', e); }
+    }
+  }
+
   // 7. Compound success hint (non-blocking)
   try {
     const successHint = getCompoundSuccessHint(toolName, toolResponse, sessionId);

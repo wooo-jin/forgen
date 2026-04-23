@@ -313,6 +313,11 @@ export function registerTools(server: McpServer): void {
         'Call this when the user explicitly corrects your behavior (e.g., "don\'t do X", "always do Y", "fix this now").',
         'This creates an Evidence record and optionally a temporary session Rule.',
         '',
+        'IMPORTANT (R7-U4): After calling this tool, you MUST include the returned',
+        'confirmation line ("✓ [forgen] correction recorded (...) — kind: ...") verbatim',
+        'in your response to the user. Do not paraphrase or omit. The user needs this',
+        'visual confirmation to know their correction was captured.',
+        '',
         'kind values:',
         '  fix-now — immediate fix needed, creates a session-scoped temporary rule',
         '  prefer-from-now — long-term preference, records evidence for future promotion',
@@ -348,12 +353,24 @@ export function registerTools(server: McpServer): void {
           attributeCorrection(effectiveSessionId);
         } catch { /* ignore */ }
 
+        // R4-UX1: 사용자 가시 confirm — Claude 가 이 응답을 사용자에게 보여주도록 강제
+        // 하기 위해 맨 앞에 user-visible marker 를 둔다. ADR-001/002 는 조용한 기록을
+        // 원칙으로 하나, 사용자가 "내 교정이 기록됐나?" 불안을 해소하는 피드백 루프는 필수.
+        const userVisibleConfirm = `✓ [forgen] correction recorded`;
+        const axis = axis_hint ? ` (axis: ${axis_hint})` : '';
+        const kindLabel = ({ 'fix-now': '즉시 수정', 'prefer-from-now': '장기 선호', 'avoid-this': '회피' } as const)[kind as string] ?? kind;
         const lines = [
-          `Evidence recorded: ${result.evidence_event_id}`,
+          `${userVisibleConfirm}${axis} — kind: ${kindLabel}`,
+          `Evidence: ${result.evidence_event_id}`,
         ];
 
         if (result.temporary_rule) {
-          lines.push(`Temporary rule created: "${result.temporary_rule.policy}" (${result.temporary_rule.strength}, scope: ${result.temporary_rule.scope})`);
+          lines.push(`Temporary rule: "${result.temporary_rule.policy}" (${result.temporary_rule.strength}, scope: ${result.temporary_rule.scope})`);
+          const enforceViaCount = result.temporary_rule.enforce_via?.length ?? 0;
+          if (enforceViaCount > 0) {
+            const mechs = result.temporary_rule.enforce_via?.map((s) => `${s.mech}@${s.hook}`).join(', ') ?? '';
+            lines.push(`enforce_via (auto-classified): [${mechs}]`);
+          }
         }
 
         if (result.recompose_required) {

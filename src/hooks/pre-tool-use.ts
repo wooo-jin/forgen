@@ -346,7 +346,58 @@ async function main(): Promise<void> {
   const toolInput = data.tool_input ?? data.toolInput ?? {};
   const sessionId = data.session_id ?? 'default';
 
-  // Bash 도구: 위험 명령어 감지
+  // ADR-001 Mech-A PreToolUse dispatcher — 사용자가 정의한 rule 이 빌트인 위험-명령 감지보다 먼저.
+  // 이렇게 해야 rule.block_message (맥락 있는 안내) 가 제네릭 "Dangerous command blocked" 대신 노출됨.
+  // fail-open: 예외는 hook 차단 안 함.
+  try {
+    const [
+      { loadActiveRules },
+      { recordViolation },
+      { compileSafeRegex, safeRegexTest },
+    ] = await Promise.all([
+      import('../store/rule-store.js'),
+      import('../engine/lifecycle/signals.js'),
+      import('./shared/safe-regex.js'),
+    ]);
+    const rules = loadActiveRules();
+    const command = typeof (toolInput as { command?: unknown }).command === 'string'
+      ? String((toolInput as { command: string }).command)
+      : '';
+    for (const rule of rules) {
+      for (const spec of rule.enforce_via ?? []) {
+        if (spec.hook !== 'PreToolUse' || spec.mech !== 'A') continue;
+        const v = spec.verifier;
+        if (!v || v.kind !== 'tool_arg_regex') continue;
+        const pattern = String(v.params?.pattern ?? '');
+        if (!pattern) continue;
+        const re = compileSafeRegex(pattern, 'i');
+        if (!re.regex) { log.debug(`rule ${rule.rule_id} unsafe regex: ${re.reason}`); continue; }
+        if (!safeRegexTest(re.regex, command)) continue;
+        const requiresFlag = v.params?.requires_flag;
+        const confirmed = process.env.FORGEN_USER_CONFIRMED === '1';
+        if (requiresFlag && !confirmed) {
+          recordViolation({ rule_id: rule.rule_id, session_id: sessionId, source: 'pre-tool-guard', kind: 'deny', message_preview: command.slice(0, 120) });
+          const baseMsg = spec.block_message ?? `[${rule.rule_id}] policy violation: ${rule.policy.slice(0, 120)}`;
+          // G8: override 힌트 — FORGEN_USER_CONFIRMED=1 으로 사용자 명시 승인 가능, 감사 로그 기록됨.
+          const msgWithHint = `${baseMsg}\n\n(override: set FORGEN_USER_CONFIRMED=1 (bypass will be audited in violations.jsonl))`;
+          console.log(deny(msgWithHint));
+          return;
+        }
+        if (requiresFlag && confirmed) {
+          // H3: 우회 감사 — FORGEN_USER_CONFIRMED 으로 Mech-A 를 우회할 때마다 violation 로그에
+          // kind='correction' 으로 기록. T3 bypass 누적 대신 별도 채널로 운영자가 monitoring 가능.
+          recordViolation({
+            rule_id: rule.rule_id, session_id: sessionId,
+            source: 'pre-tool-guard',
+            kind: 'correction', // 'correction' = 사용자 명시 우회, rule 위반이지만 의도된 것
+            message_preview: `[FORGEN_USER_CONFIRMED=1 bypass] ${command.slice(0, 120)}`,
+          });
+        }
+      }
+    }
+  } catch (e) { log.debug('enforce_via[PreToolUse] dispatch 실패', e); }
+
+  // Bash 도구: 위험 명령어 감지 (빌트인 safety net)
   const check = checkDangerousCommand(toolName, toolInput);
   if (check.action === 'block') {
     console.log(deny(`[Forgen] Dangerous command blocked: ${check.description}\nCommand: ${check.command}`));

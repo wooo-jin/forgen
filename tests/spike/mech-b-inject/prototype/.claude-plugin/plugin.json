@@ -1,0 +1,8 @@
+{
+  "$schema": "https://claude.ai/schemas/claude-plugin.json",
+  "name": "forgen-spike-mech-b",
+  "version": "0.0.1-spike",
+  "description": "Isolated Mech-B prototype for A1 verification spike. NOT for distribution.",
+  "author": { "name": "forgen-spike" },
+  "license": "MIT"
+}
