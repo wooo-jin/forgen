@@ -7,10 +7,12 @@ import { redactSecrets } from '../src/hooks/secret-filter.js';
 
 describe('redactSecrets', () => {
   it('API key 패턴 → 치환', () => {
-    const input = 'debug log: api_key=sk_' + 'live_aAbBcCdDeEfFgGhHiIjJ12345 in config';
+    // Split to avoid GitHub secret-scanner false positive on test fixtures.
+    const fakeToken = 'sk_' + 'live_' + 'aAbBcCdDeEfFgGhHiIjJ12345';
+    const input = `debug log: api_key=${fakeToken} in config`;
     const { redacted, hits } = redactSecrets(input);
     expect(hits.some((h) => h.name === 'API Key')).toBe(true);
-    expect(redacted).not.toContain('sk_' + 'live_aAbBcCdDeEfFgGhHiIjJ12345');
+    expect(redacted).not.toContain(fakeToken);
     expect(redacted).toContain('[REDACTED:');
   });
 
