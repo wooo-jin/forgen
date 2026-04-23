@@ -45,9 +45,15 @@ Built on top of the v0.3.x personalization core (4-axis profile + compound knowl
 - `scripts/self-gate-release.cjs` — tag-only: version/tag match, CHANGELOG section, dist freshness, .forgen-release/e2e-report.json.
 
 **신규 CLI**:
-- `forgen classify-enforce [--apply] [--force]` — 기존 rule 을 휴리스틱으로 자동 분류해 `enforce_via` 채움 (Mech-A destructive / Mech-A completion / Mech-B style / Mech-C drift fallback).
-- `forgen rule-meta-scan [--apply] [--window N] [--threshold N]` — drift.jsonl 읽어 Mech 강등 후보 산출.
-- `forgen lifecycle-scan [--apply]` — T2~T5 + Meta 양방향 전체 실행.
+- `forgen rule <list|suppress|activate|scan|health-scan|classify>` — 규칙 관리 네임스페이스. 기존 플랫 커맨드(suppress-rule, activate-rule, lifecycle-scan, rule-meta-scan, classify-enforce)는 하위 호환 alias 로 유지.
+- `forgen stats` — 한 화면 대시보드 (active rules, corrections, blocks/bypass/drift 7d, retired 7d, last extraction). 기존 jsonl 집계; 신규 telemetry 없음.
+- `forgen inspect corrections` — `forgen inspect evidence` 의 사용자 친화 이름. evidence 는 alias 로 유지.
+- `forgen last-block` — 가장 최근 block 이벤트 상세.
+
+**내부 CLI (하위 호환, alias 로 유지)**:
+- `forgen classify-enforce [--apply] [--force]` → `forgen rule classify`.
+- `forgen rule-meta-scan [--apply]` → `forgen rule health-scan`.
+- `forgen lifecycle-scan [--apply]` → `forgen rule scan`.
 
 **Upgrade notes (v0.3.x → v0.4.0)**:
 - 첫 `forgen` 실행 시 기존 rule 파일 (`~/.forgen/me/rules/*.json`) 에 `lifecycle` 블록이 자동 주입됩니다 (inject_count, phase='active' 등). 기존 필드는 보존됨.
@@ -55,8 +61,8 @@ Built on top of the v0.3.x personalization core (4-axis profile + compound knowl
 - `FORGEN_USER_CONFIRMED=1` 으로 Mech-A PreToolUse 우회 시 violations.jsonl 에 `kind:'correction'` audit 엔트리 기록.
 
 **운영 지표**:
-- 전체 회귀 1926/1926 pass (164 files), TypeScript clean.
-- forgen doctor 20/20 hooks active.
+- 전체 회귀 1960/1960 pass (168 files), TypeScript clean.
+- forgen doctor 20/20 hooks active; legacy `~/.forgen/rules/` orphan 감지 추가.
 - Self-gate 3단 체인 그린.
 
 ## [0.3.2] - 2026-04-21
