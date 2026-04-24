@@ -18,6 +18,7 @@
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#how-it-works">How It Works</a> &middot;
   <a href="#4-axis-personalization">4-Axis</a> &middot;
+  <a href="#the-harness-carries-you">Harness Vision</a> &middot;
   <a href="#commands">Commands</a> &middot;
   <a href="#architecture">Architecture</a> &middot;
   <a href="#safety">Safety</a>
@@ -91,6 +92,31 @@ my analysis of each..."
 ```
 
 Forgen profiles your work style, learns from your corrections, and renders personalized rules that Claude follows every session.
+
+---
+
+## The harness carries you
+
+Personalization is the surface. The deeper idea: **every session leaves a trace, and those traces compound into a harness that reasons like you do.** Your corrections, your conventions, your trade-off preferences — extracted from conversation, stored under `~/.forgen/me/`, and replayed back to Claude on every future session.
+
+```
+Conversation  ──►  Extracted: solution / rule / behavior / profile update
+                   ─────────────────────────────────────────────────────
+                                         │
+                                         ▼
+Next session  ◄──  Injected: UserPromptSubmit context + rendered rules
+                   + Stop-hook guards calibrated to *your* standards
+```
+
+After a few weeks this harness stops being "a tool that enforces rules" and starts being **a portable bundle of how you judge work**. One command exports it:
+
+```bash
+forgen compound export    # → forgen-knowledge-YYYY-MM-DD.tar.gz
+                          #   (rules + solutions + behavior — your philosophy)
+forgen compound import <path>   # replay it on another machine
+```
+
+That's the north star: *a Claude on your laptop that judges like you do, and a tarball you can carry.*
 
 ---
 
