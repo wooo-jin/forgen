@@ -8,7 +8,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { loadAllRules } from '../store/rule-store.js';
-import { loadRecentEvidence } from '../store/evidence-store.js';
+import { loadAllEvidence } from '../store/evidence-store.js';
 import { STATE_DIR, ME_DIR } from './paths.js';
 
 // v0.4.1 격리 fix: 이전에는 os.homedir() 직접 사용해서 FORGEN_HOME env 로
@@ -181,7 +181,10 @@ export function computeStats(): StatsSnapshot {
   const activeRules = rules.filter((r) => r.status === 'active').length;
   const suppressedRules = rules.filter((r) => r.status === 'suppressed').length;
 
-  const evidence = loadRecentEvidence(500);
+  // v0.4.1 정확도 수정: loadRecentEvidence(500) 제한은 "Corrections (total)"
+  // 라벨과 모순 — 실 behavior 618건 중 118건 누락됐음. 전체 evidence 스캔으로
+  // 교체. explicit_correction 만 filter 이므로 memory overhead 는 N * ~1KB 수준.
+  const evidence = loadAllEvidence();
   const corrections = evidence.filter((e) => e.type === 'explicit_correction');
   const correctionsTotal = corrections.length;
   const cutoff7d = Date.now() - 7 * MS_PER_DAY;

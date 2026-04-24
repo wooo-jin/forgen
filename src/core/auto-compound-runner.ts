@@ -528,6 +528,33 @@ ${sanitizedSummary.slice(0, 4000)}
     process.stderr.write(`[forgen-meta] ${e instanceof Error ? e.message : String(e)}\n`);
   }
 
+  // Step 6 (v0.4.1): rule lifecycle 자동 실행 — rule 의 violations/bypass/drift
+  // 신호에 따른 자동 강등/승격. 이전에는 CLI (`forgen rule scan --apply`) 수동
+  // 호출만 있어서 구매자가 몇 주 써도 rule 정비 안 됨 → 쓸모없는 rule 이 계속
+  // active. 판매 관점 심각한 "자동 학습 단절". auto-compound-runner 끝에 자동
+  // 실행해 세션마다 rule 품질 유지.
+  try {
+    const { handleLifecycleScan } = await import('../engine/lifecycle/lifecycle-cli.js');
+    // silent mode 로 돌리기 위해 stdout 을 임시 리다이렉트 (내부가 console.log 씀)
+    const origLog = console.log;
+    let applied = 0;
+    console.log = (...args: unknown[]) => {
+      const msg = args.join(' ');
+      const match = msg.match(/apply(?:ied)?\s+(\d+)/i);
+      if (match) applied = Number(match[1]);
+    };
+    try {
+      await handleLifecycleScan(['--apply']);
+    } finally {
+      console.log = origLog;
+    }
+    if (applied > 0) {
+      process.stderr.write(`[forgen-meta] rule lifecycle: ${applied} event(s) applied\n`);
+    }
+  } catch (e) {
+    process.stderr.write(`[forgen-meta] lifecycle scan failed: ${e instanceof Error ? e.message : String(e)}\n`);
+  }
+
   // 완료 기록 — H2: Stop hook 알림용으로 extractedSolutions / promotedRules 포함.
   // noticeShown=false 로 시작해서 Stop hook 가 최초 1회만 surface.
   const statePath = path.join(FORGEN_HOME, 'state', 'last-auto-compound.json');
