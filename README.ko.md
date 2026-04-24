@@ -131,7 +131,38 @@ forgen
 - **Node.js** >= 20 (SQLite 세션 검색은 >= 22 권장)
 - **Claude Code** 설치 및 인증 (`npm i -g @anthropic-ai/claude-code`)
 
-> **벤더 의존성:** forgen은 Claude Code를 래핑합니다. Anthropic API 또는 Claude Code 변경이 동작에 영향을 줄 수 있습니다. Claude Code 1.0.x 기준으로 테스트되었습니다.
+> **벤더 의존성:** forgen은 Claude Code를 래핑합니다. Anthropic API 또는 Claude Code 변경이 동작에 영향을 줄 수 있습니다. Claude Code 1.0.x / 2.1.x 에서 테스트됨.
+
+### 격리 / CI / Docker 사용
+
+forgen 홈은 기본 `~/.forgen` 이지만 프로세스별 override 가능:
+
+```bash
+# 깨끗한 격리 홈 — 실제 ~/.forgen 은 건드리지 않음
+FORGEN_HOME=/tmp/forgen-clean forgen init    # starter-pack 15개 자동 배포
+FORGEN_HOME=/tmp/forgen-clean forgen stats   # 격리 홈의 통계만 표시
+FORGEN_HOME=/tmp/forgen-clean claude -p "…"  # 훅이 env 상속 → 격리된 로그
+```
+
+Claude Code 훅 프로세스가 부모 env 를 상속하므로 `FORGEN_HOME=...` 프리픽스
+하나면 모든 상태(rules/solutions/behavior/enforcement)가 해당 디렉터리로 격리.
+쓰임새:
+
+- CI 파이프라인에서 고정 시드로 forgen 검증
+- 실 홈 오염 없이 "신규 사용자 첫날 경험" 재현
+- 한 머신에서 여러 페르소나 운영
+
+**Docker / 원격 서버 (OAuth 제약):** Claude Code 는 OAuth 세션을 **OS 키체인**
+(macOS Keychain / libsecret / Windows Credential Manager) 에 저장하므로, 새
+Linux 컨테이너에서 `~/.claude.json` 만 마운트하면 refresh 토큰이 없어서 인증이
+안 됩니다. 컨테이너 환경에서는 `ANTHROPIC_API_KEY` env 를 사용하세요. 호스트
+기반 사용(macOS/Linux 워크스테이션) 은 `claude login` 흐름 그대로 동작 — API
+키 불필요.
+
+### 마이그레이션
+
+`forgen migrate implicit-feedback` — pre-v0.4.1 로그의 `category` 필드 백필.
+멱등(idempotent) — 여러 번 실행 안전.
 
 ---
 

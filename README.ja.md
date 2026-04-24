@@ -171,7 +171,38 @@ forgen
 - **Node.js** >= 20（SQLite セッション検索には >= 22 を推奨）
 - **Claude Code** インストール・認証済み（`npm i -g @anthropic-ai/claude-code`）
 
-> **ベンダー依存:** forgen は Claude Code をラップします。Anthropic API または Claude Code の変更が動作に影響する可能性があります。Claude Code 1.0.x でテスト済みです。
+> **ベンダー依存:** forgen は Claude Code をラップします。Anthropic API または Claude Code の変更が動作に影響する可能性があります。Claude Code 1.0.x / 2.1.x でテスト済み。
+
+### 隔離 / CI / Docker での利用
+
+forgen のホームはデフォルト `~/.forgen` ですが、プロセス毎に上書き可能:
+
+```bash
+# クリーンな隔離ホーム — 実 ~/.forgen は触らない
+FORGEN_HOME=/tmp/forgen-clean forgen init    # starter-pack 15件を自動配置
+FORGEN_HOME=/tmp/forgen-clean forgen stats   # 隔離ホームの統計のみ表示
+FORGEN_HOME=/tmp/forgen-clean claude -p "…"  # フックが env を継承 → ログ隔離
+```
+
+Claude Code のフックプロセスは親 env を継承するため、`FORGEN_HOME=...` プレ
+フィックス一つで全状態 (rules/solutions/behavior/enforcement) がそのディレ
+クトリに隔離されます。用途:
+
+- CI パイプラインで固定シードに対する forgen 検証
+- 実ホーム汚染なしの「新規ユーザー初日体験」再現
+- 1 台のマシンで複数ペルソナ運用
+
+**Docker / リモートサーバー (OAuth 制約):** Claude Code は OAuth セッションを
+**OS キーチェーン** (macOS Keychain / libsecret / Windows Credential Manager)
+に保存するため、新規 Linux コンテナで `~/.claude.json` のみマウントしても
+refresh トークンが無く認証できません。コンテナ環境では `ANTHROPIC_API_KEY`
+env を使ってください。ホスト環境 (macOS/Linux ワークステーション) は通常の
+`claude login` フローで動作 — API キー不要。
+
+### マイグレーション
+
+`forgen migrate implicit-feedback` — pre-v0.4.1 ログの `category` フィールド
+バックフィル。冪等 (idempotent) — 複数回実行しても安全。
 
 ---
 
