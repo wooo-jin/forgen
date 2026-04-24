@@ -493,13 +493,28 @@ ${sanitizedSummary.slice(0, 4000)}
   }
 
   // Step 4: prefer-from-now / avoid-this 교정 → scope:'me' 영구 규칙 승격
+  let promotedCount = 0;
   try {
-    const promotedCount = promoteSessionCandidates(sessionId);
+    promotedCount = promoteSessionCandidates(sessionId);
     if (promotedCount > 0) {
       process.stderr.write(`[forgen-auto-compound] promoted ${promotedCount} correction(s) to permanent rules\n`);
     }
   } catch (e) {
     process.stderr.write(`[forgen-auto-compound] rule promotion: ${e instanceof Error ? e.message : String(e)}\n`);
+  }
+
+  // H2: count newly extracted solutions (post-quality-gate) for Stop hook 알림.
+  // solutionsBefore 스냅샷 vs 현재 디스크 상태 차분 → "N개 패턴 학습됨" 1줄.
+  let extractedSolutionsCount = 0;
+  try {
+    if (fs.existsSync(SOLUTIONS_DIR)) {
+      const current = fs.readdirSync(SOLUTIONS_DIR).filter((f) => f.endsWith('.md'));
+      for (const f of current) {
+        if (!solutionsBefore.has(f)) extractedSolutionsCount++;
+      }
+    }
+  } catch (e) {
+    process.stderr.write(`[forgen-auto-compound] solution count failed: ${e instanceof Error ? e.message : String(e)}\n`);
   }
 
   // Step 5: meta-learning (HyperAgents-inspired self-tuning)
@@ -516,10 +531,20 @@ ${sanitizedSummary.slice(0, 4000)}
     process.stderr.write(`[forgen-meta] ${e instanceof Error ? e.message : String(e)}\n`);
   }
 
-  // 완료 기록
+  // 완료 기록 — H2: Stop hook 알림용으로 extractedSolutions / promotedRules 포함.
+  // noticeShown=false 로 시작해서 Stop hook 가 최초 1회만 surface.
   const statePath = path.join(FORGEN_HOME, 'state', 'last-auto-compound.json');
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
-  fs.writeFileSync(statePath, JSON.stringify({ sessionId, completedAt: new Date().toISOString() }));
+  fs.writeFileSync(
+    statePath,
+    JSON.stringify({
+      sessionId,
+      completedAt: new Date().toISOString(),
+      extractedSolutions: extractedSolutionsCount,
+      promotedRules: promotedCount,
+      noticeShown: false,
+    }),
+  );
 } catch (e) {
   process.stderr.write(`[forgen-auto-compound] ${e instanceof Error ? e.message : String(e)}\n`);
 }

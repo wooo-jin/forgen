@@ -20,7 +20,7 @@ vi.mock('node:os', async (importOriginal) => {
   return { ...actual, homedir: () => TEST_HOME };
 });
 
-const { failOpenWithTracking, approve, deny, ask, blockStop } = await import(
+const { failOpenWithTracking, approve, deny, ask, blockStop, approveWithContext } = await import(
   '../src/hooks/shared/hook-response.js'
 );
 
@@ -73,6 +73,24 @@ describe('hook-response functions', () => {
     const result = JSON.parse(ask('confirm reason'));
     expect(result.continue).toBe(true);
     expect(result.hookSpecificOutput.permissionDecision).toBe('ask');
+  });
+
+  describe('approveWithContext — H1 user notice', () => {
+    it('returns additionalContext only when no userNotice', () => {
+      const result = JSON.parse(approveWithContext('ctx text', 'UserPromptSubmit'));
+      expect(result.continue).toBe(true);
+      expect(result.hookSpecificOutput.hookEventName).toBe('UserPromptSubmit');
+      expect(result.hookSpecificOutput.additionalContext).toBe('ctx text');
+      expect('systemMessage' in result).toBe(false);
+    });
+
+    it('H1: attaches systemMessage when userNotice provided (UI surfacing)', () => {
+      const notice = '[Forgen] 🔎 3 solutions recalled: a, b, c';
+      const result = JSON.parse(approveWithContext('ctx', 'UserPromptSubmit', notice));
+      expect(result.systemMessage).toBe(notice);
+      // additionalContext 여전히 모델에 도달해야 함
+      expect(result.hookSpecificOutput.additionalContext).toBe('ctx');
+    });
   });
 
   describe('blockStop (Stop hook only)', () => {

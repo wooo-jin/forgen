@@ -14,6 +14,7 @@ import { loadRecentEvidence } from '../store/evidence-store.js';
 const ENFORCEMENT_DIR = path.join(os.homedir(), '.forgen', 'state', 'enforcement');
 const LIFECYCLE_DIR = path.join(os.homedir(), '.forgen', 'state', 'lifecycle');
 const STATE_DIR = path.join(os.homedir(), '.forgen', 'state');
+const SOLUTIONS_DIR = path.join(os.homedir(), '.forgen', 'me', 'solutions');
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -85,6 +86,54 @@ export interface StatsSnapshot {
   drift7d: number;
   retired7d: number;
   lastExtraction: string;
+  /**
+   * H3 / v0.4.1 — assist 축 가시화. enforcement(block/violation) 는 이미 표시되지만
+   * assist(recall hit, surface, extraction) 는 v0.4.0 에서 8,000+ 번 작동했음에도
+   * 사용자에게 0건 노출되었다. 오늘 기준 숫자로 "지금 학습되고 있다" 를 surface.
+   */
+  assistToday: {
+    recallHits: number;      // match-eval-log 의 오늘 entries (매칭 시도 수)
+    surfaced: number;        // implicit-feedback 의 recommendation_surfaced 오늘
+    extractedToday: number;  // ~/.forgen/me/solutions 중 오늘 mtime
+  };
+}
+
+/** H3: 오늘 (local midnight ~ now) 기준 assist 카운트. */
+function computeAssistToday(): StatsSnapshot['assistToday'] {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const cutoffMs = startOfDay.getTime();
+
+  // recall hits: match-eval-log 의 오늘 entries
+  const matchLog = readJsonl(path.join(STATE_DIR, 'match-eval-log.jsonl'));
+  let recallHits = 0;
+  for (const e of matchLog) {
+    const ts = typeof e.ts === 'string' ? Date.parse(e.ts) : NaN;
+    if (Number.isFinite(ts) && ts >= cutoffMs) recallHits++;
+  }
+
+  // surfaced: implicit-feedback 의 recommendation_surfaced 오늘
+  const feedback = readJsonl(path.join(STATE_DIR, 'implicit-feedback.jsonl'));
+  let surfaced = 0;
+  for (const e of feedback) {
+    if (e.type !== 'recommendation_surfaced') continue;
+    const ts = typeof e.at === 'string' ? Date.parse(e.at) : NaN;
+    if (Number.isFinite(ts) && ts >= cutoffMs) surfaced++;
+  }
+
+  // extracted today: solutions dir 에서 오늘 mtime 인 .md 파일
+  let extractedToday = 0;
+  try {
+    if (fs.existsSync(SOLUTIONS_DIR)) {
+      for (const f of fs.readdirSync(SOLUTIONS_DIR)) {
+        if (!f.endsWith('.md')) continue;
+        const stat = fs.statSync(path.join(SOLUTIONS_DIR, f));
+        if (stat.mtimeMs >= cutoffMs) extractedToday++;
+      }
+    }
+  } catch { /* fail-open */ }
+
+  return { recallHits, surfaced, extractedToday };
 }
 
 export function computeStats(): StatsSnapshot {
@@ -121,6 +170,7 @@ export function computeStats(): StatsSnapshot {
     drift7d: countWithin(drift, 7),
     retired7d: readLifecycleRetired(7),
     lastExtraction: readLastExtraction(),
+    assistToday: computeAssistToday(),
   };
 }
 
@@ -146,6 +196,12 @@ export function renderStats(s: StatsSnapshot): string {
   lines.push(`    Bypass              ${padNum(s.bypass7d)}    — user overrides`);
   lines.push(`    Drift events        ${padNum(s.drift7d)}    — stuck-loop force-approves`);
   lines.push(`    Retired rules       ${padNum(s.retired7d)}    — superseded or timed out`);
+  lines.push('');
+  // H3: Assist 축 — enforcement 옆에 나란히 가시화.
+  lines.push('  Today (assist)');
+  lines.push(`    Recall hits         ${padNum(s.assistToday.recallHits)}    — compound 매칭 시도 수`);
+  lines.push(`    Surfaced            ${padNum(s.assistToday.surfaced)}    — 실제 주입된 솔루션 수`);
+  lines.push(`    Extracted           ${padNum(s.assistToday.extractedToday)}    — 오늘 새로 저장된 패턴`);
   lines.push('');
   lines.push(`  Last extraction: ${s.lastExtraction}`);
   lines.push('');

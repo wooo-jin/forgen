@@ -237,6 +237,14 @@ const commands: Command[] = [
     },
   },
   {
+    name: 'recall',
+    description: 'Show recent compound recalls (matched solutions) with optional body preview.',
+    handler: async (args) => {
+      const { handleRecall } = await import('./core/recall-cli.js');
+      await handleRecall(args);
+    },
+  },
+  {
     name: 'suppress-rule',
     description: '[alias: rule suppress] Disable a rule by id/prefix. Hard rules refused.',
     handler: async (args) => {

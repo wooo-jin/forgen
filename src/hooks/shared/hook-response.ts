@@ -26,11 +26,17 @@ export function approve(): string {
 /**
  * 통과 + 모델에 컨텍스트 주입.
  * UserPromptSubmit, SessionStart 이벤트에서만 모델에 도달함.
+ *
+ * H1 (v0.4.1): optional `userNotice` 로 사용자 UI (systemMessage) 에도 동시
+ * 1줄 노출. additionalContext 는 모델 전용이라 기존 recall hit 이 8,000+ 번
+ * 주입되었는데도 사용자는 0 건을 봤음. userNotice 로 같은 hit 을 사용자
+ * 에게 가시화한다.
  */
-export function approveWithContext(context: string, eventName: string): string {
+export function approveWithContext(context: string, eventName: string, userNotice?: string): string {
   return JSON.stringify({
     continue: true,
     hookSpecificOutput: { hookEventName: eventName, additionalContext: context },
+    ...(userNotice ? { systemMessage: userNotice } : {}),
   });
 }
 

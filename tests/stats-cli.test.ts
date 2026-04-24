@@ -104,6 +104,48 @@ describe('forgen stats — R9-PA1', () => {
     expect(s.retired7d).toBe(2);
   });
 
+  it('H3: assistToday counts recall hits / surfaced / extracted for today only', () => {
+    const now = Date.now();
+    const todayIso = new Date(now - 60_000).toISOString(); // 1 min ago
+    const stateDir = path.join(TEST_HOME, '.forgen', 'state');
+    const solutionsDir = path.join(TEST_HOME, '.forgen', 'me', 'solutions');
+
+    // 2 recall hits today + 1 yesterday
+    const yesterday = new Date(now - 25 * 3600_000).toISOString();
+    writeJsonl(path.join(stateDir, 'match-eval-log.jsonl'), [
+      { source: 'hook', ts: todayIso, rankedTopN: ['a'] },
+      { source: 'hook', ts: todayIso, rankedTopN: ['b'] },
+      { source: 'hook', ts: yesterday, rankedTopN: ['c'] },
+    ]);
+
+    // 1 recommendation_surfaced today + 1 drift_critical today (excluded)
+    writeJsonl(path.join(stateDir, 'implicit-feedback.jsonl'), [
+      { type: 'recommendation_surfaced', category: 'positive', at: todayIso, sessionId: 'S1', solution: 'sol-a' },
+      { type: 'drift_critical', category: 'drift', at: todayIso, sessionId: 'S1' },
+      { type: 'recommendation_surfaced', category: 'positive', at: yesterday, sessionId: 'S0', solution: 'sol-b' },
+    ]);
+
+    // 1 solution file created today, 1 older
+    fs.mkdirSync(solutionsDir, { recursive: true });
+    const newFile = path.join(solutionsDir, 'new-pattern.md');
+    fs.writeFileSync(newFile, '---\ntitle: new\n---\n# body');
+    const oldFile = path.join(solutionsDir, 'old-pattern.md');
+    fs.writeFileSync(oldFile, '---\ntitle: old\n---\n# body');
+    const staleTs = (now - 25 * 3600_000) / 1000;
+    fs.utimesSync(oldFile, staleTs, staleTs);
+
+    const s = computeStats();
+    expect(s.assistToday.recallHits).toBe(2);
+    expect(s.assistToday.surfaced).toBe(1);
+    expect(s.assistToday.extractedToday).toBe(1);
+
+    const rendered = renderStats(s);
+    expect(rendered).toMatch(/Today \(assist\)/);
+    expect(rendered).toMatch(/Recall hits/);
+    expect(rendered).toMatch(/Surfaced/);
+    expect(rendered).toMatch(/Extracted/);
+  });
+
   it('render output includes all 7 numbers + labels', () => {
     saveEvidence({
       evidence_id: 'e1', type: 'explicit_correction', session_id: 's1',

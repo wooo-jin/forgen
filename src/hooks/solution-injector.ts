@@ -31,6 +31,7 @@ import { approve, approveWithContext, failOpenWithTracking } from './shared/hook
 import { STATE_DIR } from '../core/paths.js';
 import { recordHookTiming } from './shared/hook-timing.js';
 import { appendPending, flushAccept } from '../engine/solution-outcomes.js';
+import { appendImplicitFeedback } from '../store/implicit-feedback-store.js';
 
 interface HookInput {
   prompt: string;
@@ -554,7 +555,32 @@ async function main(): Promise<void> {
     })));
   } catch (e) { log.debug('outcome appendPending 실패', e); }
 
-  console.log(approveWithContext(fullInjection, 'UserPromptSubmit'));
+  // H4: 양수 implicit-feedback — 솔루션이 실제로 사용자에게 surface 되었음을 기록.
+  // v0.4.0 의 enforcement 축은 block/violation 만 카운트했고 assist (solution 노출)
+  // 은 0건이었다. 이 emit 으로 forgen stats / session-quality-scorer 가 "오늘
+  // N개 surfaced" 를 계산할 수 있다.
+  try {
+    const now = new Date().toISOString();
+    for (const sol of effectiveToInject) {
+      appendImplicitFeedback({
+        type: 'recommendation_surfaced',
+        category: 'positive',
+        solution: sol.name,
+        match_score: sol.relevance,
+        at: now,
+        sessionId,
+      });
+    }
+  } catch (e) { log.debug('recommendation_surfaced emit 실패', e); }
+
+  // H1: 사용자 UI 에 recall hit 1줄 노출. additionalContext 는 모델 전용이라
+  // v0.4.0 에서 8,000+ 주입이 발생했는데도 사용자는 0건을 봤다. systemMessage
+  // 로 "N개 솔루션 참조" 를 surface → 사용자가 어떤 축적 지식이 붙었는지 인식.
+  const topNames = effectiveToInject.slice(0, 3).map((s) => s.name);
+  const more = effectiveToInject.length - topNames.length;
+  const noticeNames = more > 0 ? `${topNames.join(', ')} (+${more})` : topNames.join(', ');
+  const userNotice = `[Forgen] 🔎 ${effectiveToInject.length} solution${effectiveToInject.length === 1 ? '' : 's'} recalled: ${noticeNames}`;
+  console.log(approveWithContext(fullInjection, 'UserPromptSubmit', userNotice));
   } finally {
     recordHookTiming('solution-injector', Date.now() - _hookStart, 'UserPromptSubmit');
   }
