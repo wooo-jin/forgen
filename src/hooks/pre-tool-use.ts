@@ -450,5 +450,5 @@ main().catch((e) => {
   });
   process.stderr.write(`[ch-hook] ${hookErr.name}: ${hookErr.message}\n`);
   // fail-open: approve on internal error to avoid blocking all tool calls
-  console.log(failOpenWithTracking('pre-tool-use'));
+  console.log(failOpenWithTracking('pre-tool-use', e));
 });

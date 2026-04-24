@@ -353,6 +353,6 @@ async function main(): Promise<void> {
 if (process.argv[1] && fs.realpathSync(path.resolve(process.argv[1])) === fileURLToPath(import.meta.url)) {
   main().catch((e) => {
     process.stderr.write(`[ch-hook] ${e instanceof Error ? e.message : String(e)}\n`);
-    console.log(failOpenWithTracking('keyword-detector'));
+    console.log(failOpenWithTracking('keyword-detector', e));
   });
 }

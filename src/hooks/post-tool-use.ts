@@ -320,13 +320,22 @@ async function main(): Promise<void> {
           { recordViolation, recordBypass },
           { scanForBypass },
           { compileSafeRegex, safeRegexTest },
+          { preprocessForMatch },
         ] = await Promise.all([
           import('../store/rule-store.js'),
           import('../engine/lifecycle/signals.js'),
           import('../engine/lifecycle/bypass-detector.js'),
           import('./shared/safe-regex.js'),
+          import('./shared/command-parser.js'),
         ]);
         const rules = loadActiveRules();
+
+        // TEST-6 확장 (2026-04-24): Write/Edit 의 content 는 "실행된 명령" 이 아니라
+        // 파일 본문이라 quote 안 문자열 리터럴까지 regex 가 걸리면 false-positive bypass
+        // 가 대량 발생한다 (실측: L1-no-rm-rf-unconfirmed bypass 20건 중 Write/Edit 15건).
+        // pre-tool-use 의 match_target='masked' 와 동일한 전처리를 여기에도 적용.
+        const isFileContentTool = toolName === 'Write' || toolName === 'Edit';
+        const scanTarget = isFileContentTool ? preprocessForMatch(target, 'masked') : target;
 
         // Mech-A pattern_match dispatcher
         for (const rule of rules) {
@@ -338,7 +347,7 @@ async function main(): Promise<void> {
             if (!pattern) continue;
             const re = compileSafeRegex(pattern);
             if (!re.regex) { log.debug(`rule ${rule.rule_id} unsafe regex: ${re.reason}`); continue; }
-            if (!safeRegexTest(re.regex, target)) continue;
+            if (!safeRegexTest(re.regex, scanTarget)) continue;
             recordViolation({
               rule_id: rule.rule_id, session_id: sessionId,
               source: 'post-tool-guard',
@@ -351,8 +360,8 @@ async function main(): Promise<void> {
           }
         }
 
-        // T3 bypass detection (same rules, same target)
-        const candidates = scanForBypass({ rules, tool_name: toolName, tool_output: target, session_id: sessionId });
+        // T3 bypass detection — Write/Edit 은 masked content 로, Bash 는 raw command 로.
+        const candidates = scanForBypass({ rules, tool_name: toolName, tool_output: scanTarget, session_id: sessionId });
         for (const c of candidates) {
           recordBypass({ rule_id: c.rule_id, session_id: c.session_id, tool: c.tool, pattern_preview: c.pattern_preview });
         }
@@ -380,5 +389,5 @@ async function main(): Promise<void> {
 
 main().catch((e) => {
   process.stderr.write(`[ch-hook] ${e instanceof Error ? e.message : String(e)}\n`);
-  console.log(failOpenWithTracking('post-tool-use'));
+  console.log(failOpenWithTracking('post-tool-use', e));
 });

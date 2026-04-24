@@ -119,5 +119,5 @@ async function main(): Promise<void> {
 
 main().catch((e) => {
   process.stderr.write(`[ch-hook] DB Guard error: ${e instanceof Error ? e.message : String(e)}\n`);
-  console.log(failOpenWithTracking('db-guard'));
+  console.log(failOpenWithTracking('db-guard', e));
 });

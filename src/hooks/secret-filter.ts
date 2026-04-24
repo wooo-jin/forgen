@@ -114,5 +114,5 @@ main().catch((e) => {
     hookName: 'secret-filter', eventType: 'PostToolUse', cause: e,
   });
   process.stderr.write(`[ch-hook] ${hookErr.name}: ${hookErr.message}\n`);
-  console.log(failOpenWithTracking('secret-filter'));
+  console.log(failOpenWithTracking('secret-filter', e));
 });

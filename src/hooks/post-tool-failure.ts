@@ -153,5 +153,5 @@ main().catch((e) => {
     hookName: 'post-tool-failure', eventType: 'PostToolUseFailure', cause: e,
   });
   process.stderr.write(`[ch-hook] ${hookErr.name}: ${hookErr.message}\n`);
-  console.log(failOpenWithTracking('post-tool-failure'));
+  console.log(failOpenWithTracking('post-tool-failure', e));
 });

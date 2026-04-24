@@ -579,8 +579,8 @@ export async function main(): Promise<void> {
       return;
     }
     console.log(blockStop(reasonWithHint, hit.system_tag));
-  } catch {
-    console.log(failOpenWithTracking(HOOK_NAME));
+  } catch (e) {
+    console.log(failOpenWithTracking(HOOK_NAME, e));
   } finally {
     recordHookTiming(HOOK_NAME, Date.now() - started, 'Stop');
   }

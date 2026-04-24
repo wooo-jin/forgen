@@ -95,13 +95,32 @@ export function blockStop(reason: string, systemMessage?: string): string {
  * fail-open with error tracking: 에러 시 안전하게 통과하되, 실패 정보를 기록.
  * forgen doctor의 Hook Health 섹션에서 실패 이력을 표시할 수 있도록 JSONL 로그에 기록.
  *
+ * v0.4.1 (2026-04-24): optional `err` 매개변수 추가. 실 데이터상 106건의 hook 에러가
+ * 누적됐으나 전부 `{hook,at}` 만이라 근원 조사 불가했다. 이제 `error`/`stack` 을
+ * 함께 기록해 `forgen doctor` 가 원인 카테고리별로 빈도 surface 가능.
+ * payload 는 한 줄 cap(400자)로 잘라 JSONL 크기 폭주 방지.
+ *
  * @fail-open: hook failure must never block the user's workflow
  */
-export function failOpenWithTracking(hookName: string): string {
+export function failOpenWithTracking(hookName: string, err?: unknown): string {
   try {
     fs.mkdirSync(STATE_DIR, { recursive: true });
     const logPath = path.join(STATE_DIR, 'hook-errors.jsonl');
-    const entry = JSON.stringify({ hook: hookName, at: Date.now() });
+    const payload: Record<string, unknown> = { hook: hookName, at: Date.now() };
+    if (err !== undefined && err !== null) {
+      if (err instanceof Error) {
+        payload.error = err.message.slice(0, 400);
+        if (err.stack) {
+          // 스택 첫 3줄만 — 어느 파일/라인에서 throw 됐는지만 알면 충분.
+          payload.stack = err.stack.split('\n').slice(0, 3).join(' | ').slice(0, 400);
+        }
+        const maybeCode = (err as unknown as { code?: unknown }).code;
+        if (typeof maybeCode === 'string') payload.code = maybeCode;
+      } else {
+        payload.error = String(err).slice(0, 400);
+      }
+    }
+    const entry = JSON.stringify(payload);
     fs.appendFileSync(logPath, entry + '\n');
   } catch { /* fail-open: tracking itself must not throw */ }
   return JSON.stringify({ continue: true });

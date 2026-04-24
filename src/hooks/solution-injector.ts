@@ -588,5 +588,5 @@ async function main(): Promise<void> {
 
 main().catch((e) => {
   process.stderr.write(`[ch-hook] solution-injector: ${e instanceof Error ? e.message : String(e)}\n`);
-  console.log(failOpenWithTracking('solution-injector'));
+  console.log(failOpenWithTracking('solution-injector', e));
 });

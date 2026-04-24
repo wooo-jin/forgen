@@ -106,11 +106,11 @@ async function main(): Promise<void> {
     }
   } catch (e) {
     log.debug('슬롭 감지 실패', e);
-    console.log(failOpenWithTracking('slop-detector'));
+    console.log(failOpenWithTracking('slop-detector', e));
   }
 }
 
 main().catch((e) => {
   process.stderr.write(`[ch-hook] ${e instanceof Error ? e.message : String(e)}\n`);
-  console.log(failOpenWithTracking('slop-detector'));
+  console.log(failOpenWithTracking('slop-detector', e));
 });

@@ -342,5 +342,5 @@ async function main(): Promise<void> {
 
 main().catch((e) => {
   process.stderr.write(`[ch-hook] ${e instanceof Error ? e.message : String(e)}\n`);
-  console.log(failOpenWithTracking('skill-injector'));
+  console.log(failOpenWithTracking('skill-injector', e));
 });

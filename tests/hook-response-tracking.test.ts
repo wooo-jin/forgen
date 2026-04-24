@@ -43,6 +43,33 @@ describe('hook-response functions', () => {
     expect(() => failOpenWithTracking('hook-with-special/chars')).not.toThrow();
   });
 
+  it('failOpenWithTracking v0.4.1: captures error message + stack + code when provided', () => {
+    const err = new Error('ENOENT: no such file or directory');
+    (err as { code?: string }).code = 'ENOENT';
+    failOpenWithTracking('error-capture-test', err);
+    const sandboxLog = path.join(TEST_HOME, '.forgen', 'state', 'hook-errors.jsonl');
+    const entry = JSON.parse(fs.readFileSync(sandboxLog, 'utf-8').trim());
+    expect(entry.hook).toBe('error-capture-test');
+    expect(entry.error).toContain('ENOENT');
+    expect(entry.code).toBe('ENOENT');
+    expect(typeof entry.stack).toBe('string');
+  });
+
+  it('failOpenWithTracking v0.4.1: accepts non-Error values (string thrown)', () => {
+    failOpenWithTracking('string-throw', 'plain string error');
+    const sandboxLog = path.join(TEST_HOME, '.forgen', 'state', 'hook-errors.jsonl');
+    const entry = JSON.parse(fs.readFileSync(sandboxLog, 'utf-8').trim());
+    expect(entry.error).toBe('plain string error');
+  });
+
+  it('failOpenWithTracking v0.4.1: caps error message at 400 chars', () => {
+    const huge = 'A'.repeat(1000);
+    failOpenWithTracking('huge-err', new Error(huge));
+    const sandboxLog = path.join(TEST_HOME, '.forgen', 'state', 'hook-errors.jsonl');
+    const entry = JSON.parse(fs.readFileSync(sandboxLog, 'utf-8').trim());
+    expect(entry.error.length).toBe(400);
+  });
+
   it('failOpenWithTracking writes tracking entries under the sandbox, never real $HOME', () => {
     failOpenWithTracking('sandboxed-hook');
     const sandboxLog = path.join(TEST_HOME, '.forgen', 'state', 'hook-errors.jsonl');

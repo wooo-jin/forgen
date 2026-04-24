@@ -106,5 +106,5 @@ async function main(): Promise<void> {
 
 main().catch((e) => {
   process.stderr.write(`[ch-hook] ${e instanceof Error ? e.message : String(e)}\n`);
-  console.log(failOpenWithTracking('intent-classifier'));
+  console.log(failOpenWithTracking('intent-classifier', e));
 });

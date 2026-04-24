@@ -285,5 +285,5 @@ Rules:
 
 main().catch((e) => {
   process.stderr.write(`[ch-hook] ${e instanceof Error ? e.message : String(e)}\n`);
-  console.log(failOpenWithTracking('pre-compact'));
+  console.log(failOpenWithTracking('pre-compact', e));
 });
