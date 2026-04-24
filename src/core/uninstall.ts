@@ -346,7 +346,8 @@ export async function handleUninstall(cwd: string, options: { force?: boolean; p
 
   if (options.purge) {
     try {
-      const forgenHome = path.join(os.homedir(), '.forgen');
+      const { FORGEN_HOME } = await import('./paths.js');
+      const forgenHome = FORGEN_HOME;
       if (fs.existsSync(forgenHome)) {
         fs.rmSync(forgenHome, { recursive: true, force: true });
         console.log('  ✓ Deleted ~/.forgen/ (all rules, state, solutions, behavior)');

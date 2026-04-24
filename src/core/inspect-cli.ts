@@ -6,7 +6,6 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { loadProfile } from '../store/profile-store.js';
 import { loadAllRules, loadActiveRules } from '../store/rule-store.js';
@@ -117,7 +116,7 @@ export async function handleInspect(args: string[]): Promise<void> {
       bypass: 'bypass.jsonl',
       drift: 'drift.jsonl',
     };
-    const p = path.join(os.homedir(), '.forgen', 'state', 'enforcement', fileMap[sub]);
+    const p = path.join(STATE_DIR, 'enforcement', fileMap[sub]);
     if (!fs.existsSync(p)) {
       console.log(`\n  No ${sub} data (${p} not found).\n`);
       return;

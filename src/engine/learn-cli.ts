@@ -1,15 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
 import { fixupSolutions } from './solution-fixup.js';
 import { listQuarantined, pruneQuarantine } from './solution-quarantine.js';
 import { computeFitness } from './solution-fitness.js';
 import { buildWeaknessReport, saveWeaknessReport } from './solution-weakness.js';
 import { listCandidates, promoteCandidate, rollbackSince } from './solution-candidate.js';
-
-const ME_SOLUTIONS = path.join(os.homedir(), '.forgen', 'me', 'solutions');
-const STATE_DIR = path.join(os.homedir(), '.forgen', 'state');
-const OUTCOMES_DIR = path.join(STATE_DIR, 'outcomes');
+import { ME_SOLUTIONS, OUTCOMES_DIR } from '../core/paths.js';
 
 export async function handleLearn(args: string[]): Promise<void> {
   const sub = args[0];

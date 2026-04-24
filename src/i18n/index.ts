@@ -6,8 +6,7 @@
  */
 
 import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as os from 'node:os';
+import { GLOBAL_CONFIG } from '../core/paths.js';
 import type { QualityPack, AutonomyPack, JudgmentPack, CommunicationPack, TrustPolicy } from '../store/types.js';
 
 export type Locale = 'en' | 'ko';
@@ -262,9 +261,8 @@ export function getLocale(): Locale { return _currentLocale; }
 /** GlobalConfig에서 locale을 읽어 설정. 없으면 'en' 기본값. */
 export function initLocaleFromConfig(): void {
   try {
-    const configPath = path.join(os.homedir(), '.forgen', 'config.json');
-    if (!fs.existsSync(configPath)) return;
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    if (!fs.existsSync(GLOBAL_CONFIG)) return;
+    const config = JSON.parse(fs.readFileSync(GLOBAL_CONFIG, 'utf-8'));
     if (config.locale === 'ko' || config.locale === 'en') {
       _currentLocale = config.locale;
     }

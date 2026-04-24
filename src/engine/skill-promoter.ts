@@ -7,17 +7,14 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
 import { parseSolutionV3 } from './solution-format.js';
 import { createLogger } from '../core/logger.js';
+import { ME_SOLUTIONS, ME_SKILLS, CLAUDE_DIR } from '../core/paths.js';
 
 const log = createLogger('skill-promoter');
 
-const FORGEN_HOME = path.join(os.homedir(), '.forgen');
-const ME_SOLUTIONS = path.join(FORGEN_HOME, 'me', 'solutions');
-const ME_SKILLS = path.join(FORGEN_HOME, 'me', 'skills');
-// Claude Code가 자동 인식하는 글로벌 스킬 경로
-const CLAUDE_SKILLS = path.join(os.homedir(), '.claude', 'skills');
+// Claude Code가 자동 인식하는 글로벌 스킬 경로 (~/.claude/skills)
+const CLAUDE_SKILLS = path.join(CLAUDE_DIR, 'skills');
 
 // 일반적인 태그 제외 (트리거로 부적합)
 const GENERIC_TAGS = new Set([

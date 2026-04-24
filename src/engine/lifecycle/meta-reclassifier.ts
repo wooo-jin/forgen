@@ -17,15 +17,15 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import type { LifecycleEvent } from './types.js';
 import type { EnforcementMech, EnforceSpec, Rule } from '../../store/types.js';
 import { initLifecycle } from '../../store/rule-lifecycle.js';
 import { loadAllRules, saveRule } from '../../store/rule-store.js';
+import { STATE_DIR } from '../../core/paths.js';
 
-const DRIFT_LOG_PATH = path.join(os.homedir(), '.forgen', 'state', 'enforcement', 'drift.jsonl');
-const LIFECYCLE_DIR = path.join(os.homedir(), '.forgen', 'state', 'lifecycle');
+const DRIFT_LOG_PATH = path.join(STATE_DIR, 'enforcement', 'drift.jsonl');
+const LIFECYCLE_DIR = path.join(STATE_DIR, 'lifecycle');
 
 const DEFAULT_WINDOW_DAYS = 7;
 const DEFAULT_THRESHOLD = 3;

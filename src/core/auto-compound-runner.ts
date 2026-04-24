@@ -12,12 +12,12 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
 import { execFileSync, type ExecFileSyncOptions } from 'node:child_process';
 import { containsPromptInjection, filterSolutionContent } from '../hooks/prompt-injection-filter.js';
 import { redactSecrets } from '../hooks/secret-filter.js';
 import { createEvidence, saveEvidence, promoteSessionCandidates } from '../store/evidence-store.js';
 import { loadProfile } from '../store/profile-store.js';
+import { FORGEN_HOME, ME_DIR } from './paths.js';
 
 /** Auto-compound에 사용할 모델 — background 추출이므로 haiku로 충분 */
 const COMPOUND_MODEL = 'haiku';
@@ -54,9 +54,8 @@ if (!cwd || !transcriptPath || !sessionId) {
   process.exit(1);
 }
 
-const FORGEN_HOME = path.join(os.homedir(), '.forgen');
-const SOLUTIONS_DIR = path.join(FORGEN_HOME, 'me', 'solutions');
-const BEHAVIOR_DIR = path.join(FORGEN_HOME, 'me', 'behavior');
+const SOLUTIONS_DIR = path.join(ME_DIR, 'solutions');
+const BEHAVIOR_DIR = path.join(ME_DIR, 'behavior');
 
 /** Lightweight quality gate for auto-extracted solution files */
 /** Toxicity patterns — code-context only to avoid false positives on prose */
@@ -383,10 +382,8 @@ ${sanitizedSummary.slice(0, 4000)}
 
   // 3단계: 세션 학습 요약 (SessionLearningSummary) 생성
   try {
-    const FORGEN_HOME = path.join(os.homedir(), '.forgen');
-    const V1_ME_DIR = path.join(FORGEN_HOME, 'me');
-    const V1_PROFILE = path.join(V1_ME_DIR, 'forge-profile.json');
-    const V1_EVIDENCE_DIR = path.join(V1_ME_DIR, 'behavior');
+    const V1_PROFILE = path.join(ME_DIR, 'forge-profile.json');
+    const V1_EVIDENCE_DIR = path.join(ME_DIR, 'behavior');
 
     if (fs.existsSync(V1_PROFILE)) {
       const currentProfile = loadProfile();

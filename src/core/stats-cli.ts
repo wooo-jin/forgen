@@ -6,15 +6,16 @@
  * working between Claude sessions.
  */
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { loadAllRules } from '../store/rule-store.js';
 import { loadRecentEvidence } from '../store/evidence-store.js';
+import { STATE_DIR, ME_DIR } from './paths.js';
 
-const ENFORCEMENT_DIR = path.join(os.homedir(), '.forgen', 'state', 'enforcement');
-const LIFECYCLE_DIR = path.join(os.homedir(), '.forgen', 'state', 'lifecycle');
-const STATE_DIR = path.join(os.homedir(), '.forgen', 'state');
-const SOLUTIONS_DIR = path.join(os.homedir(), '.forgen', 'me', 'solutions');
+// v0.4.1 격리 fix: 이전에는 os.homedir() 직접 사용해서 FORGEN_HOME env 로
+// 홈 격리해도 이 파일의 경로는 여전히 실 홈 가리켰음. paths.ts 상수 import.
+const ENFORCEMENT_DIR = path.join(STATE_DIR, 'enforcement');
+const LIFECYCLE_DIR = path.join(STATE_DIR, 'lifecycle');
+const SOLUTIONS_DIR = path.join(ME_DIR, 'solutions');
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -152,7 +153,7 @@ function computeAssistToday(): StatsSnapshot['assistToday'] {
 /** v0.4.1: forge-profile 에서 고도화 지표 추출. 파일 없거나 깨지면 undefined. */
 function computePhilosophy(): StatsSnapshot['philosophy'] {
   try {
-    const profilePath = path.join(os.homedir(), '.forgen', 'me', 'forge-profile.json');
+    const profilePath = path.join(ME_DIR, 'forge-profile.json');
     if (!fs.existsSync(profilePath)) return undefined;
     const d = JSON.parse(fs.readFileSync(profilePath, 'utf-8')) as {
       axes?: Record<string, { score?: number }>;

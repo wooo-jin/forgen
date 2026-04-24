@@ -51,9 +51,9 @@ import { DEFAULT_STOP_TRIGGER_RE, DEFAULT_STOP_EXCLUDE_RE } from './shared/stop-
  * ADR-002 Meta 트리거(규칙 자동 강등)로 연결한다.
  */
 const STUCK_LOOP_THRESHOLD = 3;
-const BLOCK_COUNT_DIR = path.join(os.homedir(), '.forgen', 'state', 'enforcement', 'block-count');
-const DRIFT_LOG = path.join(os.homedir(), '.forgen', 'state', 'enforcement', 'drift.jsonl');
-const ACK_LOG = path.join(os.homedir(), '.forgen', 'state', 'enforcement', 'acknowledgments.jsonl');
+const BLOCK_COUNT_DIR = path.join(STATE_DIR, 'enforcement', 'block-count');
+const DRIFT_LOG = path.join(STATE_DIR, 'enforcement', 'drift.jsonl');
+const ACK_LOG = path.join(STATE_DIR, 'enforcement', 'acknowledgments.jsonl');
 
 interface VerifierSpec {
   kind: 'self_check_prompt' | 'artifact_check' | 'tool_arg_regex';
@@ -247,7 +247,7 @@ function evaluateVerifier(rule: SpikeRule): { violated: boolean; reason: string 
  * 루트 밖 경로는 존재 여부와 무관하게 false 반환.
  */
 function artifactFresh(relOrAbs: string, maxAgeS: number): boolean {
-  const homeBase = path.join(os.homedir(), '.forgen', 'state');
+  const homeBase = STATE_DIR;
   const projectBase = path.resolve(process.env.FORGEN_CWD ?? process.env.COMPOUND_CWD ?? process.cwd(), '.forgen', 'state');
   const allowedRoots = [homeBase, projectBase];
 

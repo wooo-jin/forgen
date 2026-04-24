@@ -10,8 +10,17 @@ export const CLAUDE_DIR = path.join(HOME, '.claude');
 export const SETTINGS_PATH = path.join(CLAUDE_DIR, 'settings.json');
 
 
-/** ~/.forgen/ — v1 하네스 홈 디렉토리 */
-export const FORGEN_HOME = path.join(HOME, '.forgen');
+/**
+ * ~/.forgen/ — v1 하네스 홈 디렉토리.
+ *
+ * v0.4.1 (2026-04-24): FORGEN_HOME env 로 override 가능.
+ * 목적: CI/e2e 에서 격리된 fresh forgen 홈으로 "신규 사용자 시뮬" + 내 실 홈
+ *   (2338+ 세션 축적물) 을 건드리지 않음. README/docs 에도 "테스트 격리" 섹션
+ *   으로 노출 예정.
+ */
+export const FORGEN_HOME = process.env.FORGEN_HOME
+  ? path.resolve(process.env.FORGEN_HOME)
+  : path.join(HOME, '.forgen');
 
 /** ~/.forgen/me/ — 개인 공간 (v5.1: ~/.compound/ → ~/.forgen/ 통합) */
 export const ME_DIR = path.join(FORGEN_HOME, 'me');

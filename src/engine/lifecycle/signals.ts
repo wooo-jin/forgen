@@ -10,14 +10,14 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import type { Rule } from '../../store/types.js';
 import type { RuleSignals, ViolationEntry, BypassEntry } from './types.js';
+import { STATE_DIR as FORGEN_STATE_DIR } from '../../core/paths.js';
 
-const STATE_DIR = path.join(os.homedir(), '.forgen', 'state', 'enforcement');
-const VIOLATIONS_PATH = path.join(STATE_DIR, 'violations.jsonl');
-const BYPASS_PATH = path.join(STATE_DIR, 'bypass.jsonl');
+const ENFORCEMENT_DIR = path.join(FORGEN_STATE_DIR, 'enforcement');
+const VIOLATIONS_PATH = path.join(ENFORCEMENT_DIR, 'violations.jsonl');
+const BYPASS_PATH = path.join(ENFORCEMENT_DIR, 'bypass.jsonl');
 
 const ROLLING_N = 20;
 const VIOLATION_WINDOW_DAYS = 30;
@@ -59,7 +59,7 @@ export function readJsonlSafe<T>(p: string): T[] {
 
 export function recordViolation(entry: Omit<ViolationEntry, 'at'>): void {
   try {
-    fs.mkdirSync(STATE_DIR, { recursive: true });
+    fs.mkdirSync(ENFORCEMENT_DIR, { recursive: true });
     rotateIfBig(VIOLATIONS_PATH);
     const full: ViolationEntry = { at: new Date().toISOString(), ...entry };
     fs.appendFileSync(VIOLATIONS_PATH, JSON.stringify(full) + '\n');
@@ -73,7 +73,7 @@ export function recordViolation(entry: Omit<ViolationEntry, 'at'>): void {
 
 export function recordBypass(entry: Omit<BypassEntry, 'at'>): void {
   try {
-    fs.mkdirSync(STATE_DIR, { recursive: true });
+    fs.mkdirSync(ENFORCEMENT_DIR, { recursive: true });
     rotateIfBig(BYPASS_PATH);
     const full: BypassEntry = { at: new Date().toISOString(), ...entry };
     fs.appendFileSync(BYPASS_PATH, JSON.stringify(full) + '\n');

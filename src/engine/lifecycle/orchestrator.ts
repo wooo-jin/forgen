@@ -22,8 +22,8 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
+import { STATE_DIR } from '../../core/paths.js';
 import type {
   Rule,
   LifecycleState,
@@ -38,7 +38,7 @@ import type { LifecycleEvent } from './types.js';
  */
 function sweepBlockCountsForRule(ruleId: string): void {
   try {
-    const dir = path.join(os.homedir(), '.forgen', 'state', 'enforcement', 'block-count');
+    const dir = path.join(STATE_DIR, 'enforcement', 'block-count');
     if (!fs.existsSync(dir)) return;
     const safeRuleId = String(ruleId).replace(/[^a-zA-Z0-9_.-]/g, '_');
     for (const file of fs.readdirSync(dir)) {

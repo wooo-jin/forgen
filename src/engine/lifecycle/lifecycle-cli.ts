@@ -6,8 +6,8 @@
  */
 
 import * as path from 'node:path';
-import * as os from 'node:os';
 import { loadAllRules, saveRule } from '../../store/rule-store.js';
+import { STATE_DIR } from '../../core/paths.js';
 import { collectSignals, readJsonlSafe } from './signals.js';
 import { detect as detectT2 } from './trigger-t2-violation.js';
 import { detect as detectT3 } from './trigger-t3-bypass.js';
@@ -24,7 +24,7 @@ import {
 import { foldEvents } from './orchestrator.js';
 import type { LifecycleEvent, RuleSignals, ViolationEntry, BypassEntry } from './types.js';
 
-const LIFECYCLE_DIR = path.join(os.homedir(), '.forgen', 'state', 'lifecycle');
+const LIFECYCLE_DIR = path.join(STATE_DIR, 'lifecycle');
 
 export async function handleLifecycleScan(args: string[]): Promise<void> {
   const apply = args.includes('--apply');
@@ -37,10 +37,10 @@ export async function handleLifecycleScan(args: string[]): Promise<void> {
   }
 
   const violations = readJsonlSafe<ViolationEntry>(
-    path.join(os.homedir(), '.forgen', 'state', 'enforcement', 'violations.jsonl')
+    path.join(STATE_DIR, 'enforcement', 'violations.jsonl')
   );
   const bypass = readJsonlSafe<BypassEntry>(
-    path.join(os.homedir(), '.forgen', 'state', 'enforcement', 'bypass.jsonl')
+    path.join(STATE_DIR, 'enforcement', 'bypass.jsonl')
   );
   const drift = readDriftEntries();
 
