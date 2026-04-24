@@ -18,6 +18,7 @@
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#工作原理">工作原理</a> &middot;
   <a href="#4轴个性化">4轴</a> &middot;
+  <a href="#这个-harness-装载的是你">愿景</a> &middot;
   <a href="#命令">命令</a> &middot;
   <a href="#架构">架构</a> &middot;
   <a href="#安全">安全</a>
@@ -89,6 +90,31 @@ session handler? 以下是                  未覆盖。完毕。"
 ```
 
 forgen 实现了这一切。它对你的工作风格进行画像、从你的纠正中学习、渲染个性化规则让 Claude 在每个会话中遵循。
+
+---
+
+## 这个 harness 装载的是你
+
+个性化只是表面。更深层的想法:**每次会话都留下痕迹,这些痕迹累积起来成为一个像你一样判断的 harness。** 你的修正、你的规范、你的权衡偏好 — 从对话中提取,存储在 `~/.forgen/me/` 下,并在每次后续会话中回放给 Claude。
+
+```
+对话          ──►  提取: solution / rule / behavior / profile 更新
+                    ────────────────────────────────────────────
+                                       │
+                                       ▼
+下一次会话    ◄──  注入: UserPromptSubmit 上下文 + 渲染的规则
+                    + 校准到你标准的 Stop-hook 守卫
+```
+
+几周之后,这个 harness 不再是"强制执行规则的工具",而是 **承载你如何判断工作的可携带包裹**。一条命令导出:
+
+```bash
+forgen compound export    # → forgen-knowledge-YYYY-MM-DD.tar.gz
+                          #   (rules + solutions + behavior — 你的哲学)
+forgen compound import <path>   # 在另一台机器上重放
+```
+
+这就是北极星:*你的笔记本上,一个像你一样判断的 Claude,还有你能随身携带的 tarball。*
 
 ---
 

@@ -14,6 +14,7 @@
 </p>
 
 <p align="center">
+  <a href="#하네스가-당신을-담고-간다">비전</a> &middot;
   <a href="#forgen를-쓰면-일어나는-일">동작 흐름</a> &middot;
   <a href="#빠른-시작">빠른 시작</a> &middot;
   <a href="#동작-방식">동작 방식</a> &middot;
@@ -49,6 +50,31 @@ forgen 없이는 두 개발자 모두 같은 범용 Claude를 받습니다. forg
 ```
 
 forgen가 이것을 가능하게 합니다. 작업 스타일을 프로파일링하고, 교정에서 학습하고, Claude가 매 세션마다 따르는 개인화 규칙을 렌더링합니다.
+
+---
+
+## 하네스가 당신을 담고 간다
+
+개인화는 표면입니다. 더 깊은 아이디어: **매 세션이 흔적을 남기고, 그 흔적들이 쌓여 당신처럼 판단하는 하네스가 됩니다.** 교정, 컨벤션, 트레이드오프 선호 — 대화에서 추출되어 `~/.forgen/me/` 에 저장되고, 다음 세션마다 Claude 에 다시 주입됩니다.
+
+```
+대화       ──►  추출: solution / rule / behavior / profile 업데이트
+                 ──────────────────────────────────────────────
+                                   │
+                                   ▼
+다음 세션  ◄──  주입: UserPromptSubmit 컨텍스트 + 렌더된 규칙
+                 + 당신의 기준에 맞춘 Stop-hook 가드
+```
+
+몇 주가 지나면 이 하네스는 "규칙을 강제하는 도구"가 아니라 **당신이 일을 판단하는 방식이 담긴 휴대 가능한 번들** 이 됩니다. 한 줄로 export:
+
+```bash
+forgen compound export    # → forgen-knowledge-YYYY-MM-DD.tar.gz
+                          #   (rules + solutions + behavior — 당신의 철학)
+forgen compound import <path>   # 다른 머신에서 그대로 재연
+```
+
+그게 북극성입니다: *노트북 위에 있는, 당신처럼 판단하는 Claude, 그리고 들고 다닐 수 있는 tarball.*
 
 ---
 

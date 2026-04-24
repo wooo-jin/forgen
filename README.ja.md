@@ -15,6 +15,7 @@
 
 <p align="center">
   <a href="#最初のブロック-30秒">最初のブロック</a> &middot;
+  <a href="#ハーネスがあなたを運ぶ">ビジョン</a> &middot;
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#仕組み">仕組み</a> &middot;
   <a href="#4軸パーソナライゼーション">4軸</a> &middot;
@@ -73,6 +74,31 @@ asciinema play docs/demo/mech-b-block-unblock.cast
 ## 2人の開発者。同じ Claude。まったく異なる振る舞い。
 
 上記の Trust Layer は柱の1つです。もう1つはパーソナライゼーション — 最初のブロック後に forgen を使い続ける理由です。
+
+---
+
+## ハーネスがあなたを運ぶ
+
+パーソナライゼーションは表面です。より深いアイデア: **すべてのセッションが痕跡を残し、その痕跡が蓄積されてあなたのように判断するハーネスになります。** 修正、規約、トレードオフの好み — 会話から抽出され、`~/.forgen/me/` に保存され、次のセッションで Claude に再注入されます。
+
+```
+会話          ──►  抽出: solution / rule / behavior / profile 更新
+                    ────────────────────────────────────────────
+                                       │
+                                       ▼
+次のセッション  ◄──  注入: UserPromptSubmit コンテキスト + レンダリングされた
+                    ルール + あなたの基準に合わせた Stop-hook ガード
+```
+
+数週間経つと、このハーネスは「ルールを強制するツール」ではなく、**あなたが仕事を判断する方法が詰まった持ち運べるバンドル** になります。一行で export:
+
+```bash
+forgen compound export    # → forgen-knowledge-YYYY-MM-DD.tar.gz
+                          #   (rules + solutions + behavior — あなたの哲学)
+forgen compound import <path>   # 別のマシンで再現
+```
+
+これが北極星: *ノートパソコン上で、あなたのように判断する Claude と、持ち運べる tarball.*
 
 開発者 A は慎重派です。Claude にすべてのテストを実行させ、理由を説明させ、現在のファイル以外を変更する前に必ず確認を求めます。
 
