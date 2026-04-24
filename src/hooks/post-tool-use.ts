@@ -330,14 +330,10 @@ async function main(): Promise<void> {
         ]);
         const rules = loadActiveRules();
 
-        // TEST-6 확장 (2026-04-24): Write/Edit 의 content 는 "실행된 명령" 이 아니라
-        // 파일 본문이라 quote 안 문자열 리터럴까지 regex 가 걸리면 false-positive bypass
-        // 가 대량 발생한다 (실측: L1-no-rm-rf-unconfirmed bypass 20건 중 Write/Edit 15건).
-        // pre-tool-use 의 match_target='masked' 와 동일한 전처리를 여기에도 적용.
-        const isFileContentTool = toolName === 'Write' || toolName === 'Edit';
-        const scanTarget = isFileContentTool ? preprocessForMatch(target, 'masked') : target;
-
-        // Mech-A pattern_match dispatcher
+        // Mech-A pattern_match dispatcher — match_target 은 **rule-per-rule**.
+        // AWS key / DROP 류 secret/dangerous SQL 은 파일 content 에 들어있어도
+        // 실제 leak 이라 raw 검사가 맞고, rm -rf 류 shell 명령은 quote 안 본문이면
+        // false-positive 이므로 masked 가 맞다. pre-tool-use 와 동일한 spec 기반 분기.
         for (const rule of rules) {
           for (const spec of rule.enforce_via ?? []) {
             if (spec.hook !== 'PostToolUse' || spec.mech !== 'A') continue;
@@ -347,7 +343,9 @@ async function main(): Promise<void> {
             if (!pattern) continue;
             const re = compileSafeRegex(pattern);
             if (!re.regex) { log.debug(`rule ${rule.rule_id} unsafe regex: ${re.reason}`); continue; }
-            if (!safeRegexTest(re.regex, scanTarget)) continue;
+            const matchTarget = (v.params?.match_target ?? 'raw') as 'raw' | 'masked' | 'command_tokens';
+            const mechTarget = preprocessForMatch(target, matchTarget);
+            if (!safeRegexTest(re.regex, mechTarget)) continue;
             recordViolation({
               rule_id: rule.rule_id, session_id: sessionId,
               source: 'post-tool-guard',
@@ -360,8 +358,14 @@ async function main(): Promise<void> {
           }
         }
 
-        // T3 bypass detection — Write/Edit 은 masked content 로, Bash 는 raw command 로.
-        const candidates = scanForBypass({ rules, tool_name: toolName, tool_output: scanTarget, session_id: sessionId });
+        // T3 bypass detection — scanForBypass 는 rule.policy 자연어에서 패턴 추출이라
+        // match_target 개념 없음. Write/Edit 는 파일 본문이라 bypass-detector 의
+        // 자연어 휴리스틱이 false-positive 과다 (L1-no-rm-rf-unconfirmed bypass 20건
+        // 중 Write/Edit 15건이 실측). 이 경로만 masked. Bash 는 실제 실행된 명령이라
+        // raw 유지. Mech-A pattern_match 는 위에서 rule-per-rule 로 이미 처리.
+        const isFileContentTool = toolName === 'Write' || toolName === 'Edit';
+        const bypassTarget = isFileContentTool ? preprocessForMatch(target, 'masked') : target;
+        const candidates = scanForBypass({ rules, tool_name: toolName, tool_output: bypassTarget, session_id: sessionId });
         for (const c of candidates) {
           recordBypass({ rule_id: c.rule_id, session_id: c.session_id, tool: c.tool, pattern_preview: c.pattern_preview });
         }
