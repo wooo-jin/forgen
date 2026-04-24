@@ -60,6 +60,15 @@ const MAX_SOLUTIONS_PER_SESSION = 10;
  */
 export const MIN_INJECT_RELEVANCE = 0.3;
 export const MIN_INJECT_RELEVANCE_TRUSTED = 0.25;
+/**
+ * v0.4.1 — cold-start 사용자 threshold. outcomes 이벤트가 거의 없는 신규 사용자
+ * 는 starter-pack 이 champion/active 로 승격될 기회가 없어 0.3 gate 에 막혀 주입 0.
+ * 실측 (buyer-day1 v2): starter 15개 중 recall 5건 전부 relevance 0.08~0.25, 주입 0.
+ * 이 값으로 첫날부터 매칭 가능성 제공 + 누적 후엔 표준 threshold 로 자연 전환.
+ */
+export const MIN_INJECT_RELEVANCE_COLD_START = 0.2;
+/** cold-start 판정 임계 — fitness state 있는 솔루션이 이 수 미만이면 신규 사용자 간주. */
+export const COLD_START_FITNESS_THRESHOLD = 5;
 
 /** 세션별 이미 주입된 솔루션 추적 (중복 방지) */
 function getSessionCachePath(sessionId: string): string {
@@ -384,11 +393,16 @@ async function main(): Promise<void> {
     }
   } catch (e) { log.debug('fitness state load 실패 — default 0.3 적용', e); }
 
+  // v0.4.1 cold-start boost: outcome 이벤트가 누적되지 않은 신규 사용자 (fitness
+  // state 있는 솔루션 < THRESHOLD) 는 champion/active 로 승격될 기회가 없으므로
+  // 보정된 낮은 threshold 적용. 누적되면 자동으로 표준 경로로 전환.
+  const isColdStart = fitnessStateMap.size < COLD_START_FITNESS_THRESHOLD;
+
   function minRelevanceFor(name: string): number {
     const state = fitnessStateMap.get(name);
-    return (state === 'champion' || state === 'active')
-      ? MIN_INJECT_RELEVANCE_TRUSTED
-      : MIN_INJECT_RELEVANCE;
+    if (state === 'champion' || state === 'active') return MIN_INJECT_RELEVANCE_TRUSTED;
+    if (isColdStart) return MIN_INJECT_RELEVANCE_COLD_START;
+    return MIN_INJECT_RELEVANCE;
   }
 
   let experimentCount = 0;

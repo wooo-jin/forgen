@@ -23,6 +23,14 @@ git init -q && git config user.email t@t && git config user.name T
 npm init -y -q >/dev/null 2>&1
 echo '{}' > tsconfig.json
 
+# ── [v0.4.1] Starter-pack 프로비저닝 — 신규 사용자 첫날 가치 실현 조건 ──
+echo ""
+echo "  [Init: starter-pack 배포]"
+INIT_OUT=$(FORGEN_HOME="$ISOLATE" forgen init 2>&1 < /dev/null | head -15)
+echo "$INIT_OUT" | grep -E "Starter-pack|✓" | head -3
+STARTER=$(ls $ISOLATE/me/solutions 2>/dev/null | grep -c "^starter-")
+echo "    starter 솔루션 $STARTER 개 설치"
+
 # ── Round 1: 간단 구현 + TDD ──
 echo ""
 echo "  [R1: TDD 함수 구현]"
