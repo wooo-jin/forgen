@@ -471,12 +471,16 @@ function printHelp() {
                                     Inspect v1 state (alias: evidence → corrections)
     forgen rule <list|suppress|activate|scan|health-scan|classify>
                                     Rule management (see: forgen rule help)
-    forgen stats                    One-screen trust-layer dashboard
+    forgen stats                    One-screen trust-layer dashboard (+ philosophy)
     forgen last-block               Show the most recent block event
+    forgen recall [--limit N] [--show]
+                                    최근 compound 주입 이력 (solution body preview)
+    forgen migrate [implicit-feedback|all]
+                                    One-shot schema migration (category backfill)
     forgen compound                 Manage accumulated knowledge
     forgen dashboard                Compound system dashboard
     forgen me                       Personal dashboard
-    forgen init                     Initialize project
+    forgen init                     Initialize project (+ starter-pack solutions)
     forgen config hooks             Hook management
     forgen mcp                      MCP server management
     forgen skill promote|list       Skill management
