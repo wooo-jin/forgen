@@ -37,24 +37,26 @@
 You've been burned: Claude says "tests pass, implementation done" — you run it — it doesn't work. forgen closes that gap.
 
 ```
-You:     "Implement the login handler."
-Claude:  ...makes edits...
-Claude:  "구현 완료했습니다."
+You:     "Update the auth middleware."
+Claude:  ...makes edits to src/middleware/auth.ts...
+Claude:  "구현 완료. 신뢰도 95/100."
 
-[forgen:stop-guard/L1-e2e-before-done]
-Docker e2e 증거(~/.forgen/state/e2e-result.json, 1시간 이내)가 없습니다.
-지금 실행 후 재응답하라.
+[forgen:stop-guard/builtin:self-score-inflation]
+자가 점수 상승 선언 1건 (95/100). 측정 도구 호출 0회 — 숫자를 뒷받침할
+실행/확인 증거 없음. 테스트/빌드/curl 실행 결과를 턴에 포함해 재응답.
 
-Claude:  "완료 선언을 취소합니다. 증거 파일이 없습니다. e2e 를 먼저 실행합니다..."
-         ...runs bash tests/e2e/docker/run-test.sh...
-         "63/63 pass. 구현 완료했습니다."
+Claude:  "측정 없이 점수를 매겼습니다. 실 테스트부터 실행합니다..."
+         $ npm test
+         "31 passed / 0 failed. auth middleware 구현 완료."
 
 [forgen] ✓ approved
 ```
 
-**What just happened**: Claude's Stop hook was blocked by a rule you defined (`L1-e2e-before-done`). Claude read the block `reason`, retracted its premature claim, produced evidence, and re-submitted. **Zero extra API calls** — it all happened in the same session turn Claude was going to produce anyway.
+**What just happened**: Claude's Stop hook detected a score claim (`95/100`) without any measurement tool call (`Bash` / `NotebookEdit`) in the turn — one of forgen's **three built-in meta guards** (TEST-1 fact vs agreement, **TEST-2 self-score inflation**, TEST-3 conclusion/verification ratio). Claude read the block `reason`, retracted, ran the real test, and re-submitted. **Zero extra API calls** — it all happened in the same session turn Claude was going to produce anyway.
 
-This is **Mech-B self-check prompt-inject**. It works because Claude Code's Stop hook accepts `decision: "block"` + `reason`, and Claude in the next turn reads that reason as input. We verified it end-to-end on 10 scenarios at $1.74 total cost ([A1 spike report](docs/spike/mech-b-a1-verification-report.md)).
+The same mechanism also fires when Claude writes conclusions faster than evidence ("done. passed. shipped. verified." with no measurement context), or claims facts ("테스트가 통과합니다") without ever having executed them. You can also define **custom rules** (e.g. "require npm test evidence before saying 'done' in this repo") via `forgen compound --rule` — they slot into the same Stop-hook dispatcher.
+
+This is **Mech-B self-check prompt-inject**. It works because Claude Code's Stop hook accepts `decision: "block"` + `reason`, and Claude in the next turn reads that reason as input. We verified it end-to-end on 10 scenarios at $1.74 total cost ([A1 spike report](docs/spike/mech-b-a1-verification-report.md)), and v0.4.1 added built-in guards so you get the first block **without writing any rule**.
 
 🎬 **See it happen** (27 seconds):
 
@@ -315,7 +317,11 @@ Claude has your accumulated patterns in context while drafting the response.
 
 Precision gates (v0.3.2+): matches below relevance 0.3 or with only a single
 common-word tag overlap are filtered before injection so Claude's context
-doesn't get polluted by low-signal hits.
+doesn't get polluted by low-signal hits. **Cold-start boost (v0.4.1+)**: when
+your outcome history has < 5 champion/active solutions (first days after
+install), the injection threshold is relaxed to 0.2 so starter-pack solutions
+can actually surface; once your own patterns accumulate the threshold returns
+to the standard 0.3.
 
 ### 10 built-in skills
 
@@ -523,7 +529,9 @@ forgen forge --export           # Export profile
 ### Inspection
 
 ```bash
-forgen stats                    # One-screen trust-layer dashboard (rules, corrections, blocks 7d)
+forgen stats                    # Trust-layer dashboard (rules, corrections, blocks 7d, assist today, philosophy)
+forgen recall [--limit N] [--show]
+                                # Recent compound recalls surfaced to Claude (with body preview)
 forgen last-block               # Most recent block event with rule detail
 forgen inspect profile          # 4-axis profile with packs and facets
 forgen inspect rules            # Active and suppressed rules
@@ -562,7 +570,9 @@ forgen skill list               # List promoted skills
 ### System
 
 ```bash
-forgen init                     # Initialize project
+forgen init                     # Initialize project (+ 15 starter-pack solutions)
+forgen migrate [implicit-feedback|all]
+                                # One-shot schema migrations (idempotent)
 forgen doctor                   # System diagnostics (10 categories + harness maturity)
 forgen doctor --prune-state     # Daily hygiene: state GC + T4 rule decay (90d idle → retire)
 forgen dashboard                # Knowledge overview (6 sections)
