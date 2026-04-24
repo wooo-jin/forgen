@@ -22,6 +22,7 @@ import { approve, approveWithWarning, failOpenWithTracking } from './shared/hook
 import { STATE_DIR } from '../core/paths.js';
 import { recordHookTiming } from './shared/hook-timing.js';
 import { type DriftState, createDriftState, evaluateDrift } from '../core/drift-score.js';
+import { appendImplicitFeedback } from '../store/implicit-feedback-store.js';
 
 // ── Types ──
 
@@ -45,7 +46,15 @@ interface ModifiedFilesState {
   recentWrites?: Record<string, string[]>;
   /** Drift detection state */
   drift?: DriftState;
+  /**
+   * TEST-2 support: 최근 N개 tool 이름 (가장 최근이 마지막). 세션 시작 이래 누적된
+   * 도구 이름을 그대로 끝까지 보관하면 메모리 낭비이므로 slice window.
+   * stop-guard 가 "측정 도구 호출 수" 를 빠르게 계산.
+   */
+  recentToolNames?: string[];
 }
+
+const RECENT_TOOL_NAMES_WINDOW = 20;
 
 /** Lightweight hash for content comparison (not cryptographic) */
 function simpleHash(content: string): string {
@@ -56,16 +65,6 @@ function simpleHash(content: string): string {
     hash |= 0; // Convert to 32-bit integer
   }
   return hash.toString(36);
-}
-
-const IMPLICIT_FEEDBACK_LOG = path.join(STATE_DIR, 'implicit-feedback.jsonl');
-
-/** Record implicit feedback signal to JSONL */
-function recordImplicitFeedback(entry: Record<string, unknown>): void {
-  try {
-    fs.mkdirSync(STATE_DIR, { recursive: true });
-    fs.appendFileSync(IMPLICIT_FEEDBACK_LOG, JSON.stringify(entry) + '\n');
-  } catch { /* fail-open: implicit feedback recording must not throw */ }
 }
 
 // ── State management ──
@@ -179,6 +178,15 @@ async function main(): Promise<void> {
   const modState = loadModifiedFiles(sessionId);
   modState.toolCallCount = (modState.toolCallCount ?? 0) + 1;
 
+  // TEST-2: recent tool name window — stop-guard 의 self-score inflation 가드가
+  // "최근 세션에서 측정 도구 몇 번 불렸나?" 를 이 배열로 계산한다.
+  if (toolName) {
+    const names = modState.recentToolNames ?? [];
+    names.push(toolName);
+    if (names.length > RECENT_TOOL_NAMES_WINDOW) names.splice(0, names.length - RECENT_TOOL_NAMES_WINDOW);
+    modState.recentToolNames = names;
+  }
+
   const messages: string[] = [];
   let revertDetected = false;
 
@@ -206,8 +214,9 @@ async function main(): Promise<void> {
         // Implicit feedback: repeated edit detection (5+ edits on same file)
         if (count >= 5) {
           messages.push(`<compound-tool-warning>\n[Forgen] ⚠ ${path.basename(filePath)} has been modified ${count} times.\nConsider redesigning the overall structure and restarting.\n</compound-tool-warning>`);
-          recordImplicitFeedback({
+          appendImplicitFeedback({
             type: 'repeated_edit',
+            category: 'edit',
             file: filePath,
             editCount: count,
             at: new Date().toISOString(),
@@ -227,8 +236,9 @@ async function main(): Promise<void> {
           // Skip the most recent hash (which would be the write being "reverted from")
           if (prevHashes.length >= 2 && prevHashes.slice(0, -1).includes(hash)) {
             revertDetected = true;
-            recordImplicitFeedback({
+            appendImplicitFeedback({
               type: 'revert_detected',
+              category: 'revert',
               file: filePath,
               at: new Date().toISOString(),
               sessionId,
@@ -250,8 +260,9 @@ async function main(): Promise<void> {
     const driftResult = evaluateDrift(modState.drift, true, revertDetected);
     if (driftResult.message) {
       messages.push(`<compound-tool-warning>\n${driftResult.message}\n</compound-tool-warning>`);
-      recordImplicitFeedback({
+      appendImplicitFeedback({
         type: driftResult.level === 'critical' || driftResult.level === 'hardcap' ? 'drift_critical' : 'drift_warning',
+        category: 'drift',
         score: driftResult.score,
         totalEdits: modState.drift.totalEdits,
         totalReverts: modState.drift.totalReverts,
@@ -266,8 +277,9 @@ async function main(): Promise<void> {
     const agentResult = validateAgentOutput(toolResponse);
     if (agentResult) {
       messages.push(`<compound-agent-validation>\n[Forgen] ${agentResult.severity === 'error' ? '⛔' : '⚠'} ${agentResult.message}\n</compound-agent-validation>`);
-      recordImplicitFeedback({
+      appendImplicitFeedback({
         type: `agent_${agentResult.signal}`,
+        category: 'agent',
         severity: agentResult.severity,
         outputLength: toolResponse.trim().length,
         at: new Date().toISOString(),

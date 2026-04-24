@@ -17,6 +17,10 @@ import * as path from 'node:path';
 import { ME_BEHAVIOR, STATE_DIR } from '../../core/paths.js';
 import { safeReadJSON } from '../../hooks/shared/atomic-write.js';
 import type { SessionQualityScore } from './types.js';
+import {
+  loadImplicitFeedback as loadImplicitFeedbackFromStore,
+  type ImplicitFeedbackEntry,
+} from '../../store/implicit-feedback-store.js';
 
 // ── Data loaders ──
 
@@ -47,13 +51,6 @@ interface ModifiedFilesState {
   drift?: DriftState;
 }
 
-interface ImplicitFeedbackEntry {
-  type: string;
-  sessionId?: string;
-  at: string;
-  [key: string]: unknown;
-}
-
 function sanitizeId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_-]/g, '_');
 }
@@ -75,23 +72,7 @@ export function loadDriftState(sessionId: string): DriftState | null {
 }
 
 export function loadImplicitFeedback(sessionId: string): ImplicitFeedbackEntry[] {
-  const logPath = path.join(STATE_DIR, 'implicit-feedback.jsonl');
-  try {
-    if (!fs.existsSync(logPath)) return [];
-    const lines = fs.readFileSync(logPath, 'utf-8').split('\n').filter(Boolean);
-    const entries: ImplicitFeedbackEntry[] = [];
-    for (const line of lines) {
-      try {
-        const entry = JSON.parse(line) as ImplicitFeedbackEntry;
-        if (entry.sessionId === sessionId) entries.push(entry);
-      } catch {
-        /* skip malformed lines */
-      }
-    }
-    return entries;
-  } catch {
-    return [];
-  }
+  return loadImplicitFeedbackFromStore(sessionId);
 }
 
 export function loadSessionCorrections(sessionId: string): number {
