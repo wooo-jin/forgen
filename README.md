@@ -171,7 +171,39 @@ forgen
 - **Node.js** >= 20 (>= 22 recommended for SQLite session search)
 - **Claude Code** installed and authenticated (`npm i -g @anthropic-ai/claude-code`)
 
-> **Vendor dependency:** Forgen wraps Claude Code. Anthropic API or Claude Code changes may affect behavior. Tested with Claude Code 1.0.x.
+> **Vendor dependency:** Forgen wraps Claude Code. Anthropic API or Claude Code changes may affect behavior. Tested with Claude Code 1.0.x / 2.1.x.
+
+### Isolated / CI / Docker usage
+
+Forgen's home directory is `~/.forgen` by default, but can be overridden per-process:
+
+```bash
+# Fresh isolated home — does NOT touch your real ~/.forgen
+FORGEN_HOME=/tmp/forgen-clean forgen init       # provisions 15-solution starter pack
+FORGEN_HOME=/tmp/forgen-clean forgen stats      # shows stats from the isolated home
+FORGEN_HOME=/tmp/forgen-clean claude -p "..."   # hooks inherit the env → isolated logs
+```
+
+Claude Code hook processes inherit the parent env, so any `claude` command
+prefixed with `FORGEN_HOME=...` routes all state (rules, solutions, behavior,
+enforcement logs) into that directory. Useful for:
+
+- CI pipelines validating forgen against a pinned seed set
+- Reproducing buyer-first-day experience without polluting your real home
+- Running multiple personas on one machine
+
+**Docker / remote servers (OAuth limitation):** Claude Code stores its OAuth
+session in the **OS keychain** (macOS Keychain / libsecret / Windows Credential
+Manager). Mounting `~/.claude.json` alone is **not enough** in a fresh Linux
+container because the keychain-bound refresh is missing. For container use, set
+`ANTHROPIC_API_KEY` in the container env instead. Host-native usage (macOS,
+Linux workstations) works with the normal `claude login` flow — no API key
+needed.
+
+### Migrations
+
+`forgen migrate implicit-feedback` backfills the `category` field on pre-v0.4.1
+entries in `~/.forgen/state/implicit-feedback.jsonl`. Idempotent — safe to re-run.
 
 ---
 

@@ -188,7 +188,12 @@ export function computeStats(): StatsSnapshot {
   const corrections7d = corrections.filter((e) => Date.parse(e.timestamp) >= cutoff7d).length;
 
   const violations = readJsonl(path.join(ENFORCEMENT_DIR, 'violations.jsonl'));
-  const bypass = readJsonl(path.join(ENFORCEMENT_DIR, 'bypass.jsonl'));
+  // v0.4.1 historical false-positive 제거: pre-0.4.1 bypass-detector 가 Write/Edit
+  // content 의 quote 본문까지 raw 매칭해서 bypass 로 오기록. 실 관찰: L1-no-rm-rf
+  // -unconfirmed bypass 20건 중 Write/Edit 15건. stats 표시는 **실 실행 맥락** 인
+  // Bash/Agent/기타만 집계 — 앞으로의 시계열 일관성 + 과거 noise 제거.
+  const bypassRaw = readJsonl(path.join(ENFORCEMENT_DIR, 'bypass.jsonl'));
+  const bypass = bypassRaw.filter((e) => e.tool !== 'Write' && e.tool !== 'Edit');
   const drift = readJsonl(path.join(ENFORCEMENT_DIR, 'drift.jsonl'));
   const acks = readJsonl(path.join(ENFORCEMENT_DIR, 'acknowledgments.jsonl'));
 
