@@ -309,7 +309,7 @@ echo '{"continue":true}'
       expect(wasBlocked).toBe(true);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
-      fs.unlinkSync(tmpHook);
+      try { fs.unlinkSync(tmpHook); } catch { /* flaky race: 다른 e2e 인스턴스 또는 OS GC 가 이미 제거 */ }
     }
   }, TIMEOUT);
 
@@ -370,7 +370,7 @@ echo '{"continue":true}'
       expect(result.stdout).toContain('FOXTROT-5577');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
-      fs.unlinkSync(tmpHook);
+      try { fs.unlinkSync(tmpHook); } catch { /* flaky race: 다른 e2e 인스턴스 또는 OS GC 가 이미 제거 */ }
     }
   }, TIMEOUT);
 });
