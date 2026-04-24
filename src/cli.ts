@@ -245,6 +245,14 @@ const commands: Command[] = [
     },
   },
   {
+    name: 'migrate',
+    description: 'One-shot schema migrations (implicit-feedback category backfill).',
+    handler: async (args) => {
+      const { handleMigrate } = await import('./core/migrate-cli.js');
+      await handleMigrate(args);
+    },
+  },
+  {
     name: 'suppress-rule',
     description: '[alias: rule suppress] Disable a rule by id/prefix. Hard rules refused.',
     handler: async (args) => {
