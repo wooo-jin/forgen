@@ -23,7 +23,12 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { readStdinJSON } from './shared/read-stdin.js';
-import { approve, blockStop, failOpenWithTracking } from './shared/hook-response.js';
+import { approve, approveWithWarning, blockStop, failOpenWithTracking } from './shared/hook-response.js';
+import { takeLastExtractionNotice } from '../core/extraction-notice.js';
+import { checkConclusionVerificationRatio } from '../checks/conclusion-verification-ratio.js';
+import { checkSelfScoreInflation } from '../checks/self-score-deflation.js';
+import { STATE_DIR } from '../core/paths.js';
+import { sanitizeId } from './shared/sanitize-id.js';
 import { recordHookTiming } from './shared/hook-timing.js';
 import { isHookEnabled } from './hook-config.js';
 import { loadActiveRules } from '../store/rule-store.js';
@@ -423,24 +428,95 @@ export function getStuckLoopThreshold(): number {
   return STUCK_LOOP_THRESHOLD;
 }
 
+/**
+ * TEST-2 support: post-tool-use 가 저장한 modified-files-{sessionId}.json 에서
+ * recentToolNames 윈도우를 로드. 파일이 없거나 깨져도 빈 배열로 fail-open.
+ */
+function loadRecentToolNames(sessionId: string): string[] {
+  try {
+    const p = path.join(STATE_DIR, `modified-files-${sanitizeId(sessionId)}.json`);
+    if (!fs.existsSync(p)) return [];
+    const raw = fs.readFileSync(p, 'utf-8');
+    const data = JSON.parse(raw) as { recentToolNames?: unknown };
+    if (Array.isArray(data.recentToolNames)) {
+      return data.recentToolNames.filter((n): n is string => typeof n === 'string');
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * H2: Stop hook approve 시 이전 세션의 auto-compound 추출 결과를 1회만 surface.
+ * takeLastExtractionNotice 가 null 이면 일반 approve, 아니면 systemMessage 포함.
+ */
+function approveWithOptionalExtractionNotice(): string {
+  const notice = takeLastExtractionNotice();
+  if (notice) return approveWithWarning(notice);
+  return approve();
+}
+
 export async function main(): Promise<void> {
   const started = Date.now();
   try {
     if (!isHookEnabled(HOOK_NAME)) {
-      console.log(approve());
+      console.log(approveWithOptionalExtractionNotice());
       return;
     }
 
     const input = await readStdinJSON<StopHookInput>();
     const lastMessage = readLastAssistantMessage(input);
     if (!lastMessage) {
-      console.log(approve());
+      console.log(approveWithOptionalExtractionNotice());
       return;
+    }
+
+    // TEST-2/3: rule-free meta guards — FORGEN_USER_CONFIRMED=1 우회 공통.
+    if (process.env.FORGEN_USER_CONFIRMED !== '1') {
+      const sessionId = input?.session_id ?? 'unknown';
+
+      // TEST-2 (자가 점수 인플레이션): 숫자 점수 상승 선언 + 측정 도구 0회 → block.
+      // TEST-3 보다 강한 신호라 먼저 평가.
+      const recentTools = loadRecentToolNames(sessionId);
+      const score = checkSelfScoreInflation({ text: lastMessage, recentTools });
+      if (score.block) {
+        recordViolation({
+          rule_id: 'builtin:self-score-inflation',
+          session_id: sessionId,
+          source: 'stop-guard',
+          kind: 'block',
+          message_preview: lastMessage.slice(0, 120),
+        });
+        const reasonText = `[forgen:stop-guard/self-score-inflation] ${score.reason}
+
+(Override this turn: set FORGEN_USER_CONFIRMED=1 (audited).)`;
+        console.log(blockStop(reasonText, 'rule:TEST-2 — self-score inflation'));
+        return;
+      }
+
+      // TEST-3: 결론/검증 비율 — Claude 가 실제 측정 도구는 돌렸지만 서술이
+      // 결론-편향이면 여전히 block.
+      const ratio = checkConclusionVerificationRatio({ text: lastMessage });
+      if (ratio.block) {
+        recordViolation({
+          rule_id: 'builtin:conclusion-verification-ratio',
+          session_id: sessionId,
+          source: 'stop-guard',
+          kind: 'block',
+          message_preview: lastMessage.slice(0, 120),
+        });
+        const reasonText = `[forgen:stop-guard/conclusion-ratio] ${ratio.reason}
+
+(Override this turn: set FORGEN_USER_CONFIRMED=1 (audited).)`;
+        console.log(blockStop(reasonText, 'rule:TEST-3 — conclusion/verification ratio'));
+        return;
+      }
     }
 
     const rules = loadStopRules();
     if (rules.length === 0) {
-      console.log(approve());
+      console.log(approveWithOptionalExtractionNotice());
       return;
     }
 
@@ -451,7 +527,7 @@ export async function main(): Promise<void> {
       // R9-PA2: 같은 session 에 pending block 이 있었다면 retract→pass 루프가
       // 실제 작동한 것 — acknowledgment 이벤트로 기록. block-count 는 cleanup.
       acknowledgeSessionBlocks(sessionId);
-      console.log(approve());
+      console.log(approveWithOptionalExtractionNotice());
       return;
     }
 
@@ -465,7 +541,7 @@ export async function main(): Promise<void> {
         kind: 'correction',
         message_preview: `[FORGEN_USER_CONFIRMED=1 bypass] ${lastMessage.slice(0, 100)}`,
       });
-      console.log(approve());
+      console.log(approveWithOptionalExtractionNotice());
       return;
     }
 
@@ -499,7 +575,7 @@ export async function main(): Promise<void> {
         message_preview: lastMessage.slice(0, 120),
       });
       resetBlockCount(sessionId, hit.id);
-      console.log(approve());
+      console.log(approveWithOptionalExtractionNotice());
       return;
     }
     console.log(blockStop(reasonWithHint, hit.system_tag));
