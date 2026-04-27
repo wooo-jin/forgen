@@ -19,7 +19,7 @@ describe('cli - command structure', () => {
     return [...source.matchAll(/name:\s*'([^']+)'/g)]
       .map((match) => match[1])
       .filter((name) => name !== 'string')
-      .slice(0, 15);
+      .slice(0, 16);
   }
 
   it('CLI 모듈이 로드 가능하다', async () => {
@@ -40,6 +40,7 @@ describe('cli - command structure', () => {
       'mcp',
       'init',
       'install',
+      'parity',
       'notepad',
       'inspect',
       'onboarding',

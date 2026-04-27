@@ -172,6 +172,31 @@ const commands: Command[] = [
     },
   },
   {
+    name: 'parity',
+    description: 'Run host parity checks. Usage: forgen parity codex [--dry-run]',
+    handler: async (args) => {
+      const sub = args[0];
+      if (sub !== 'codex') {
+        console.log('Usage:\n  forgen parity codex [--dry-run]\n\nNotes:\n  - source 체크아웃에서만 작동합니다 (tests/ 디렉토리 필요).\n  - npm install 로 설치된 패키지에서는 run-parity.sh 가 없습니다.');
+        return;
+      }
+      const here = path.dirname(new URL(import.meta.url).pathname);
+      const scriptPath = path.resolve(here, '..', 'tests', 'e2e', 'codex', 'run-parity.sh');
+      if (!fs.existsSync(scriptPath)) {
+        console.error('[forgen] run-parity.sh 는 source 체크아웃에서만 작동. 직접 git clone 후 실행하세요.');
+        console.error(`  expected: ${scriptPath}`);
+        process.exit(1);
+      }
+      const { spawnSync } = await import('node:child_process');
+      const dryRun = args.includes('--dry-run');
+      const spawnArgs = dryRun ? ['--dry-run'] : [];
+      const result = spawnSync('bash', [scriptPath, ...spawnArgs], { stdio: 'inherit' });
+      if (result.status !== 0) {
+        process.exit(result.status ?? 1);
+      }
+    },
+  },
+  {
     name: 'notepad',
     description: 'Notepad (show|add|clear)',
     handler: async (args) => {
@@ -504,8 +529,9 @@ function printHelp() {
     forgen last-block               Show the most recent block event
     forgen recall [--limit N] [--show]
                                     최근 compound 주입 이력 (solution body preview)
-    forgen migrate [implicit-feedback|all]
-                                    One-shot schema migration (category backfill)
+    forgen migrate [implicit-feedback|evidence-host|all]
+                                    One-shot schema migration (category backfill / host backfill)
+    forgen parity codex [--dry-run] Run codex parity checks (source checkout only)
     forgen compound                 Manage accumulated knowledge
     forgen dashboard                Compound system dashboard
     forgen me                       Personal dashboard
