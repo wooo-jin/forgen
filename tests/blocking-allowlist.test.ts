@@ -2,12 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { BLOCKING_ALLOWLIST, canBlock, requiresPolicyDoc } from '../src/hooks/shared/blocking-allowlist.js';
 
 describe('Blocking ALLOW-LIST (P3\')', () => {
-  it('현재 정책 — 4개 hook 만 block 권한', () => {
-    expect(BLOCKING_ALLOWLIST.size).toBe(4);
+  it('현재 정책 — 5개 hook 만 block 권한', () => {
+    expect(BLOCKING_ALLOWLIST.size).toBe(5);
     expect(canBlock('stop-guard')).toBe(true);
     expect(canBlock('pre-tool-use')).toBe(true);
     expect(canBlock('secret-filter')).toBe(true);
     expect(canBlock('db-guard')).toBe(true);
+    expect(canBlock('rate-limiter')).toBe(true);
   });
 
   it('ALLOW-LIST 외 hook 은 block 권한 없음 (관찰 신호로 강등 대상)', () => {
@@ -36,6 +37,7 @@ describe('Blocking ALLOW-LIST (P3\')', () => {
     expect([...BLOCKING_ALLOWLIST].sort()).toEqual([
       'db-guard',
       'pre-tool-use',
+      'rate-limiter',
       'secret-filter',
       'stop-guard',
     ]);

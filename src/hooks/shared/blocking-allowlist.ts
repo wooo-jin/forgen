@@ -9,9 +9,8 @@
  * 의 source-of-truth 를 단일화.
  *
  * v0.4.2 정책:
- *   - 본 모듈은 ALLOW-LIST 정의 + 검증 helper 만. 자동 강등(observe-only fallback)
- *     은 follow-up — 각 hook 이 점진적으로 canBlock(name) 체크하고 false 면 log
- *     로만 출력하도록 마이그레이션.
+ *   - 본 모듈은 ALLOW-LIST 정의 + 검증 helper. 기존 deny() 직접 호출 hook 들은
+ *     v0.4.2 에서 denyOrObserve(name, reason) 로 마이그레이션 완료.
  *   - 신규 hook 추가 시 차단 권한이 필요하면 본 ALLOW-LIST 에 추가 + 본 파일의
  *     사유 문서화 의무. 본 commit diff 가 review 필수 항목.
  *
@@ -20,6 +19,7 @@
  *   - pre-tool-use: Bash dangerous-pattern + 수동 confirm 가드
  *   - secret-filter: Write/Edit 결과의 .env / API key 노출 차단
  *   - db-guard: Bash 의 destructive DB 명령 (DROP/TRUNCATE/DELETE) 차단
+ *   - rate-limiter: 사용자 작업 빈도 임계 초과 시 cool-down 차단 (resource abuse 방어)
  */
 
 export const BLOCKING_ALLOWLIST: ReadonlySet<string> = new Set<string>([
@@ -27,6 +27,7 @@ export const BLOCKING_ALLOWLIST: ReadonlySet<string> = new Set<string>([
   'pre-tool-use',
   'secret-filter',
   'db-guard',
+  'rate-limiter',
 ]);
 
 /** hook 이 block 결정을 출력할 권한이 있는지. */

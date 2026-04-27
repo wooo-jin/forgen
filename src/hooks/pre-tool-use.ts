@@ -21,7 +21,7 @@ import { sanitizeId } from './shared/sanitize-id.js';
 import { incrementEvidence } from '../engine/solution-writer.js';
 import { isReflectionCandidate } from './compound-reflection.js';
 import { isHookEnabled } from './hook-config.js';
-import { approve, approveWithWarning, deny, failOpenWithTracking } from './shared/hook-response.js';
+import { approve, approveWithWarning, denyOrObserve, failOpenWithTracking } from './shared/hook-response.js';
 import { FORGEN_HOME, STATE_DIR } from '../core/paths.js';
 import { recordHookTiming } from './shared/hook-timing.js';
 import { maskQuotedContent } from './shared/command-parser.js';
@@ -345,7 +345,7 @@ async function main(): Promise<void> {
     // for `forgen doctor` / log inspection. Mirrors `db-guard.ts:85-96`.
     const failCount = getAndIncrementFailCount();
     if (failCount >= FAIL_CLOSE_THRESHOLD) {
-      console.log(deny(`[Forgen] PreToolUse: stdin parse failed ${failCount} consecutive times — blocking for safety.`));
+      console.log(denyOrObserve('pre-tool-use', `[Forgen] PreToolUse: stdin parse failed ${failCount} consecutive times — blocking for safety.`));
     } else {
       process.stderr.write(`[ch-hook] pre-tool-use stdin parse failed (${failCount}/${FAIL_CLOSE_THRESHOLD})\n`);
       console.log(approve());
@@ -406,7 +406,7 @@ async function main(): Promise<void> {
           const baseMsg = spec.block_message ?? `[${rule.rule_id}] policy violation: ${rule.policy.slice(0, 120)}`;
           // G8: override 힌트 — FORGEN_USER_CONFIRMED=1 으로 사용자 명시 승인 가능, 감사 로그 기록됨.
           const msgWithHint = `${baseMsg}\n\n(override: set FORGEN_USER_CONFIRMED=1 (bypass will be audited in violations.jsonl))`;
-          console.log(deny(msgWithHint));
+          console.log(denyOrObserve('pre-tool-use', msgWithHint));
           return;
         }
         if (requiresFlag && confirmed) {
@@ -426,7 +426,7 @@ async function main(): Promise<void> {
   // Bash 도구: 위험 명령어 감지 (빌트인 safety net)
   const check = checkDangerousCommand(toolName, toolInput);
   if (check.action === 'block') {
-    console.log(deny(`[Forgen] Dangerous command blocked: ${check.description}\nCommand: ${check.command}`));
+    console.log(denyOrObserve('pre-tool-use', `[Forgen] Dangerous command blocked: ${check.description}\nCommand: ${check.command}`));
     return;
   }
   if (check.action === 'warn') {

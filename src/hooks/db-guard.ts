@@ -10,7 +10,7 @@ import * as path from 'node:path';
 import { readStdinJSON } from './shared/read-stdin.js';
 import { atomicWriteJSON } from './shared/atomic-write.js';
 import { isHookEnabled } from './hook-config.js';
-import { approve, approveWithWarning, deny, failOpenWithTracking } from './shared/hook-response.js';
+import { approve, approveWithWarning, denyOrObserve, failOpenWithTracking } from './shared/hook-response.js';
 import { STATE_DIR } from '../core/paths.js';
 import { preprocessForMatch } from './shared/command-parser.js';
 const FAIL_COUNTER_PATH = path.join(STATE_DIR, 'db-guard-fail-counter.json');
@@ -104,7 +104,7 @@ async function main(): Promise<void> {
   if (!data) {
     const failCount = getAndIncrementFailCount();
     if (failCount >= FAIL_CLOSE_THRESHOLD) {
-      console.log(deny(`[Forgen] DB Guard: stdin parse failed ${failCount} consecutive times — blocking for safety.`));
+      console.log(denyOrObserve('db-guard', `[Forgen] DB Guard: stdin parse failed ${failCount} consecutive times — blocking for safety.`));
     } else {
       process.stderr.write(`[ch-hook] db-guard stdin parse failed (${failCount}/${FAIL_CLOSE_THRESHOLD})\n`);
       console.log(approve());
@@ -123,7 +123,7 @@ async function main(): Promise<void> {
 
   const check = checkDangerousSql(toolName, toolInput);
   if (check.action === 'block') {
-    console.log(deny(`[Forgen] Dangerous SQL blocked: ${check.description}`));
+    console.log(denyOrObserve('db-guard', `[Forgen] Dangerous SQL blocked: ${check.description}`));
     return;
   }
   if (check.action === 'warn') {

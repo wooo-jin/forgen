@@ -11,7 +11,7 @@ import * as path from 'node:path';
 import { readStdinJSON } from './shared/read-stdin.js';
 import { atomicWriteJSON } from './shared/atomic-write.js';
 import { isHookEnabled } from './hook-config.js';
-import { approve, deny, failOpenWithTracking } from './shared/hook-response.js';
+import { approve, denyOrObserve, failOpenWithTracking } from './shared/hook-response.js';
 import { STATE_DIR } from '../core/paths.js';
 const RATE_LIMIT_PATH = path.join(STATE_DIR, 'rate-limit.json');
 const DEFAULT_LIMIT = 30; // calls per minute
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
   }
 
   if (exceeded) {
-    console.log(deny(`[Forgen] Rate limit exceeded (${count}/${DEFAULT_LIMIT}/min). Wait before retrying.`));
+    console.log(denyOrObserve('rate-limiter', `[Forgen] Rate limit exceeded (${count}/${DEFAULT_LIMIT}/min). Wait before retrying.`));
     return;
   }
 
