@@ -98,6 +98,13 @@ export function runScenario(scenario: BehavioralParityScenario): ParityCheckResu
  * P4 1차 시나리오 corpus — Trust Layer 7 의도 중 hook 출력으로 직접 관측 가능한 5종.
  * (`forge-loop-state-inject` 는 inject-context 의 특수 케이스, `self-evidence-record` 는
  * 파일 시스템 사이드이펙트라 본 corpus 가 아닌 별도 e2e 트랙.)
+ *
+ * P4 2차 추가 시나리오 (spec §10 우선순위 4 산출물, 2026-04-27):
+ *   - forge-loop-m1-inject-stale       : §17.1 fact 1 / M1 hook 1KB cap + stale tag
+ *   - block-tool-use-pretool-ask       : §9.0 block-tool-use row — Codex ask 값 동치
+ *   - stop-hook-reentry-guard          : §15 stop_hook_active=true 즉시 approve 경로
+ *   - posttooluse-general-block-only   : §9.0 secret-filter row partial — block decision 만 등가
+ *   - suppress-output-equivalence      : suppressOutput 동치성
  */
 export const SCENARIO_CORPUS: ReadonlyArray<BehavioralParityScenario> = [
   {
@@ -199,6 +206,127 @@ export const SCENARIO_CORPUS: ReadonlyArray<BehavioralParityScenario> = [
     compareKeys: [
       'hookSpecificOutput.permissionDecision',
       'hookSpecificOutput.permissionDecisionReason',
+    ],
+  },
+
+  // ── P4 2차 추가 시나리오 ────────────────────────────────────────────────────
+
+  {
+    id: 'forge-loop-m1-inject-stale',
+    intent: 'forge-loop-state-inject',
+    description:
+      'SessionStart 가 stale="true" 태그 포함 forge-loop-state 를 1KB cap 내에서 inject (spec §17.1 fact 1 / M1 hook)',
+    input: { hookEventName: 'SessionStart' },
+    hostRaw: {
+      claude: {
+        hookSpecificOutput: {
+          hookEventName: 'SessionStart',
+          additionalContext:
+            '<forge-loop-state stale="true">{"phase":"M1","lastCompletedAt":"2026-04-26T22:00:00Z"}</forge-loop-state>',
+        },
+      },
+      codex: {
+        hookSpecificOutput: {
+          hookEventName: 'SessionStart',
+          additionalContext:
+            '<forge-loop-state stale="true">{"phase":"M1","lastCompletedAt":"2026-04-26T22:00:00Z"}</forge-loop-state>',
+        },
+      },
+    },
+    compareKeys: [
+      'continue',
+      'hookSpecificOutput.additionalContext',
+    ],
+  },
+
+  {
+    id: 'block-tool-use-pretool-ask',
+    intent: 'block-tool-use',
+    description:
+      'Codex PreToolUse permissionDecision:"ask" 가 Claude ask 값과 의미 동치 — forgen denyOrObserve 의 ask 의도 (spec §9.0 block-tool-use row 메모)',
+    input: { hookEventName: 'PreToolUse', tool_name: 'Bash' },
+    hostRaw: {
+      claude: {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'ask',
+          permissionDecisionReason: 'requires human confirmation',
+        },
+      },
+      codex: {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'ask',
+          permissionDecisionReason: 'requires human confirmation',
+        },
+      },
+    },
+    compareKeys: [
+      'hookSpecificOutput.permissionDecision',
+      'hookSpecificOutput.permissionDecisionReason',
+    ],
+  },
+
+  {
+    id: 'stop-hook-reentry-guard',
+    intent: 'block-completion',
+    description:
+      'stop_hook_active=true 시 Stop hook 이 즉시 approve(continue:true) 로 빠지는 재진입 가드 (spec §15)',
+    input: { hookEventName: 'Stop', stop_hook_active: true },
+    hostRaw: {
+      claude: { continue: true },
+      codex: { continue: true },
+    },
+    compareKeys: ['continue'],
+  },
+
+  {
+    id: 'posttooluse-general-block-only',
+    intent: 'secret-filter',
+    description:
+      'PostToolUse 일반 tool — Codex 는 redact 미보장이므로 block decision 만 양쪽 등가. updatedMCPToolOutput 없음 (spec §9.0 secret-filter row partial / §18.2 fact 4)',
+    input: { hookEventName: 'PostToolUse', tool_name: 'Bash' },
+    hostRaw: {
+      claude: {
+        hookSpecificOutput: {
+          hookEventName: 'PostToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: 'SECRET=... detected in tool output',
+        },
+      },
+      codex: {
+        hookSpecificOutput: {
+          hookEventName: 'PostToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: 'SECRET=... detected in tool output',
+        },
+      },
+    },
+    compareKeys: [
+      'hookSpecificOutput.permissionDecision',
+      'hookSpecificOutput.permissionDecisionReason',
+    ],
+  },
+
+  {
+    id: 'suppress-output-equivalence',
+    intent: 'observe-only',
+    description:
+      'PostToolUse suppressOutput=true 가 양쪽 host 에서 동치로 사영됨',
+    input: { hookEventName: 'PostToolUse', tool_name: 'Read' },
+    hostRaw: {
+      claude: {
+        continue: true,
+        suppressOutput: true,
+      },
+      codex: {
+        continue: true,
+        suppressOutput: true,
+      },
+    },
+    compareKeys: [
+      'continue',
+      'suppressOutput',
     ],
   },
 ];
