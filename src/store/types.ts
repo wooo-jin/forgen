@@ -171,6 +171,12 @@ export interface Evidence {
   candidate_rule_refs: string[];
   confidence: number;
   raw_payload: Record<string, unknown>;
+  /**
+   * Multi-Host Core Design §4.2 / §10 우선순위 5.
+   * evidence 가 어느 host 에서 발생했는지 태그. 미지정 시 'claude' 로 backfill (기존 데이터 호환).
+   * core 의 학습 로직은 이 필드를 *호스트별 가중치* 가 아니라 *불일치 demote 신호* 로만 사용한다.
+   */
+  host?: 'claude' | 'codex';
 }
 
 // ── Facets ──

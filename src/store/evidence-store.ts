@@ -21,6 +21,22 @@ function evidencePath(evidenceId: string): string {
   return path.join(ME_BEHAVIOR, `${evidenceId}.json`);
 }
 
+/**
+ * 현재 세션이 어느 host 에서 실행되는지 추론 (Multi-Host §4.2).
+ * 1) explicit `params.host`
+ * 2) env var `FORGEN_HOST` (e2e 격리용)
+ * 3) `runtime` env hint
+ * 4) Codex CLI 흔적 (`CODEX_HOME` 또는 `CODEX_SANDBOX_NETWORK_DISABLED`)
+ * 5) default 'claude' (1원칙)
+ */
+function detectHost(explicit?: 'claude' | 'codex'): 'claude' | 'codex' {
+  if (explicit) return explicit;
+  const fromEnv = process.env.FORGEN_HOST;
+  if (fromEnv === 'claude' || fromEnv === 'codex') return fromEnv;
+  if (process.env.CODEX_HOME || process.env.CODEX_SANDBOX_NETWORK_DISABLED) return 'codex';
+  return 'claude';
+}
+
 export function createEvidence(params: {
   type: EvidenceType;
   session_id: string;
@@ -30,6 +46,7 @@ export function createEvidence(params: {
   candidate_rule_refs?: string[];
   confidence: number;
   raw_payload?: Record<string, unknown>;
+  host?: 'claude' | 'codex';
 }): Evidence {
   return {
     evidence_id: crypto.randomUUID(),
@@ -42,6 +59,7 @@ export function createEvidence(params: {
     candidate_rule_refs: params.candidate_rule_refs ?? [],
     confidence: params.confidence,
     raw_payload: params.raw_payload ?? {},
+    host: detectHost(params.host),
   };
 }
 
@@ -98,8 +116,18 @@ export function appendEvidence(evidence: Evidence): { saved: true; t1_events: nu
   }
 }
 
+/**
+ * 기존 evidence 에 host 필드가 없으면 'claude' 로 backfill (Multi-Host §4.2 마이그레이션 정책).
+ * 새 multi-host 도입 이전 데이터는 모두 Claude 에서 발생했음 — 이 backfill 은 무손실.
+ */
+function backfillHost(ev: Evidence | null): Evidence | null {
+  if (!ev) return ev;
+  if (ev.host === 'claude' || ev.host === 'codex') return ev;
+  return { ...ev, host: 'claude' };
+}
+
 export function loadEvidence(evidenceId: string): Evidence | null {
-  return safeReadJSON<Evidence | null>(evidencePath(evidenceId), null);
+  return backfillHost(safeReadJSON<Evidence | null>(evidencePath(evidenceId), null));
 }
 
 export function loadAllEvidence(): Evidence[] {
@@ -108,7 +136,8 @@ export function loadAllEvidence(): Evidence[] {
   for (const file of fs.readdirSync(ME_BEHAVIOR)) {
     if (!file.endsWith('.json')) continue;
     const ev = safeReadJSON<Evidence | null>(path.join(ME_BEHAVIOR, file), null);
-    if (ev) items.push(ev);
+    const filled = backfillHost(ev);
+    if (filled) items.push(filled);
   }
   return items;
 }
