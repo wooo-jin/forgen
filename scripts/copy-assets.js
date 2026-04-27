@@ -1,3 +1,11 @@
+// TODO(§7.2 자산분리 2차 PR): 소스 경로 갱신 예정
+//   commands/  → assets/claude/commands/
+//   skills/    → assets/claude/skills/
+//   hooks/hooks.json → assets/claude/hooks/hooks.json (Claude 버전)
+//                    + assets/codex/hooks.json (절대경로 pre-expand 버전)
+//   hook-registry.json → assets/shared/hook-registry.json
+// 자세한 매핑은 assets/README.md 참고.
+
 import { cpSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
