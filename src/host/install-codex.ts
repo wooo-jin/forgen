@@ -230,7 +230,12 @@ function installCodexSkills(opts: { sourceDir: string; targetDir: string; dryRun
     const skillFile = path.join(skillDir, 'SKILL.md');
     if (fs.existsSync(skillFile)) {
       const existing = fs.readFileSync(skillFile, 'utf-8');
-      if (!existing.includes(FORGEN_SKILL_MARKER)) continue; // 사용자 작성 — skip
+      // Phase 3 critic fix: marker 가 *frontmatter 직후* 위치에 있는지 검증.
+      // 사용자가 forgen 문서를 인용해 본문 안에 marker 가 우연히 포함될 수 있어
+      // includes() 만으론 안전 X. 정규식으로 frontmatter 종결(`---\n`) 다음 빈 줄 다음
+      // 첫 non-blank 줄에 marker 가 있는지 확인.
+      const fmMarkerRe = /^---\n[\s\S]*?\n---\n\s*<!-- forgen-managed -->/;
+      if (!fmMarkerRe.test(existing)) continue; // 사용자 작성 또는 손상 — skip
     }
     const raw = fs.readFileSync(path.join(sourceDir, file), 'utf-8');
     const descMatch = raw.match(/description:\s*(.+)/);
@@ -248,16 +253,25 @@ function installCodexSkills(opts: { sourceDir: string; targetDir: string; dryRun
 // ── P3-3: AGENTS.md inject ────────────────────────────────────────────
 
 function resolveAgentsMdPath(pkgRoot: string): string {
-  // pkgRoot 의 git root 가 있으면 그곳의 AGENTS.md, 아니면 cwd 의 AGENTS.md.
-  // 본 함수는 *install 시점* 에 호출되므로 pkgRoot 기준 가장 가까운 AGENTS.md.
-  let dir = pkgRoot;
-  for (let depth = 0; depth < 5; depth += 1) {
+  // Phase 3 critic fix: pkgRoot 기반 walk-up 은 `npm install -g` 시 시스템 디렉토리
+  // (예: /usr/local/lib/node_modules/forgen) 에 fallback AGENTS.md 작성 위험.
+  // *cwd 기반* 으로 변경 — 사용자 작업 디렉토리의 git root, 없으면 cwd 자체.
+  // (사용자가 forgen install codex 를 실행하는 위치가 install target 이라는 자연 가정.)
+  // pkgRoot 는 fallback 으로 유지 (cwd 가 git root 를 못 찾고 / 등 시스템 dir 일 때).
+  const cwd = process.cwd();
+  let dir = cwd;
+  for (let depth = 0; depth < 8; depth += 1) {
     if (fs.existsSync(path.join(dir, '.git'))) return path.join(dir, 'AGENTS.md');
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
-  return path.join(pkgRoot, 'AGENTS.md');
+  // cwd 에서 .git 못 찾음 — cwd 직접 사용 (시스템 dir 가 아닌 한 안전).
+  // 시스템 dir (예: /, /usr) 인 경우 ~/AGENTS.md fallback (사용자 home 안전).
+  if (cwd === '/' || cwd.startsWith('/usr/') || cwd.startsWith('/opt/')) {
+    return path.join(os.homedir(), 'AGENTS.md');
+  }
+  return path.join(cwd, 'AGENTS.md');
 }
 
 function buildForgenRulesBlock(pkgRoot: string): string {
