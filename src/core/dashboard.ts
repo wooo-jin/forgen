@@ -31,6 +31,7 @@ import {
 import { parseFrontmatterOnly } from '../engine/solution-format.js';
 import type { SolutionFrontmatter, SolutionStatus } from '../engine/solution-format.js';
 import { readMatchEvalLog } from '../engine/match-eval-log.js';
+import { summarizeAllByHost } from '../store/host-mismatch.js';
 
 // ── ANSI color helpers ──
 
@@ -449,6 +450,47 @@ function renderHookHealth(data: HookHealth): string {
   return lines.join('\n');
 }
 
+// ── Multi-Host Evidence ──
+
+export interface MultiHostData {
+  claude: number;
+  codex: number;
+  total: number;
+}
+
+/** Collect multi-host evidence distribution from host-mismatch store. */
+export function collectMultiHostData(): MultiHostData {
+  try {
+    return summarizeAllByHost();
+  } catch {
+    return { claude: 0, codex: 0, total: 0 };
+  }
+}
+
+function renderMultiHost(data: MultiHostData): string {
+  const lines: string[] = [];
+  lines.push(`  ${bold(cyan('Multi-Host Evidence'))}`);
+  lines.push('');
+
+  if (data.total === 0) {
+    lines.push(`  ${dim('No evidence recorded yet.')}`);
+    return lines.join('\n');
+  }
+
+  const claudePct = Math.round((data.claude / data.total) * 100);
+  const codexPct = Math.round((data.codex / data.total) * 100);
+  lines.push(`  Hosts        claude:${data.claude} (${claudePct}%)  codex:${data.codex} (${codexPct}%)  total:${data.total}`);
+
+  // skew 경고: 80%+ 집중
+  const maxShare = Math.max(claudePct, codexPct);
+  if (data.total >= 5 && maxShare >= 80) {
+    const dominant = data.claude >= data.codex ? 'claude' : 'codex';
+    lines.push(`  ${yellow(`⚠ ${dominant} 에 ${maxShare}% 집중 — 다른 host 데이터 부족`)}`);
+  }
+
+  return lines.join('\n');
+}
+
 // ── Main Dashboard Renderer ──
 
 // ── Learning Curve: 교정 추이 + 절약 시간 추정 ──
@@ -641,6 +683,7 @@ export function renderDashboard(): string {
   const session = collectSessionHistory();
   const hookHealth = collectHookHealth();
   const learning = collectLearningCurve();
+  const multiHost = collectMultiHostData();
 
   const divider = `  ${dim('─'.repeat(50))}`;
 
@@ -657,6 +700,8 @@ export function renderDashboard(): string {
     renderKnowledgeOverview(knowledge),
     divider,
     renderInjectionActivity(injection),
+    divider,
+    renderMultiHost(multiHost),
     divider,
     renderReflectionData(reflection),
     divider,

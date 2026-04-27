@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { FORGEN_HOME, LAB_DIR, ME_BEHAVIOR, ME_DIR, ME_SOLUTIONS, ME_RULES, ME_SKILLS, PACKS_DIR, SESSIONS_DIR, STATE_DIR } from './paths.js';
 import { getTimingStats } from '../hooks/shared/hook-timing.js';
 import { countSessionScopedFiles, pruneState } from './state-gc.js';
+import { summarizeAllByHost } from '../store/host-mismatch.js';
 
 /** ~/.claude/projects/ — Claude Code 세션 저장 경로 */
 const CLAUDE_PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
@@ -413,6 +414,29 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<void> {
       }
     }
   } catch { /* fail-open */ }
+  console.log();
+
+  // [Multi-Host] — host 별 evidence 분포
+  console.log('  [Multi-Host]');
+  try {
+    const hostStats = summarizeAllByHost();
+    if (hostStats.total === 0) {
+      console.log('  No evidence recorded yet.');
+    } else {
+      const claudePct = hostStats.total > 0 ? Math.round((hostStats.claude / hostStats.total) * 100) : 0;
+      const codexPct = hostStats.total > 0 ? Math.round((hostStats.codex / hostStats.total) * 100) : 0;
+      console.log(`  Registered hosts: claude, codex`);
+      console.log(`  Evidence by host: claude:${hostStats.claude} (${claudePct}%)  codex:${hostStats.codex} (${codexPct}%)  total:${hostStats.total}`);
+      // 한 host 가 80% 이상이면 skew 경고
+      const maxShare = Math.max(claudePct, codexPct);
+      if (hostStats.total >= 5 && maxShare >= 80) {
+        const dominant = claudePct >= codexPct ? 'claude' : 'codex';
+        console.log(`  ⚠ evidence 가 ${dominant} 에 ${maxShare}% 집중됨 — 다른 host 에서 학습 데이터 부족 가능`);
+      }
+    }
+  } catch {
+    console.log('  Unable to read host evidence data.');
+  }
   console.log();
 
   // [Summary] — 최종 상태 요약과 복구 액션을 한눈에 보이게
