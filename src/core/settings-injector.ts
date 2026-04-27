@@ -8,6 +8,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { generateHooksJson } from '../hooks/hooks-generator.js';
+import { getHostRuntime } from '../host/host-runtime.js';
 import { ConfigError } from './errors.js';
 import { createLogger } from './logger.js';
 import {
@@ -103,14 +104,15 @@ function mergeHooksIntoSettings(
   }
 
   try {
-    if (runtime === 'codex') {
+    const host = getHostRuntime(runtime);
+    if (host.hookInjectionStrategy === 'generate') {
       const generated = generateHooksJson({ cwd, runtime, pluginRoot: path.join(pkgRoot, 'dist') });
       for (const [event, handlers] of Object.entries(generated.hooks)) {
         if (!hooksConfig[event]) hooksConfig[event] = [];
         (hooksConfig[event] as unknown[]).push(...handlers);
       }
     } else {
-      // Read hooks.json and inject, replacing ${CLAUDE_PLUGIN_ROOT}
+      // 'pre-baked-file': pkgRoot/hooks/hooks.json 읽고 ${CLAUDE_PLUGIN_ROOT} 치환
       const hooksJsonPath = path.join(pkgRoot, 'hooks', 'hooks.json');
       if (fs.existsSync(hooksJsonPath)) {
         const hooksJson = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf-8'));

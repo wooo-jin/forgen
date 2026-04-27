@@ -9,16 +9,13 @@ import { loadGlobalConfig } from './global-config.js';
 import { createLogger } from './logger.js';
 import { STATE_DIR } from './paths.js';
 import { type RuntimeHost } from './types.js';
+import { getHostRuntime } from '../host/host-runtime.js';
 
 const log = createLogger('spawn');
 
-/** claude CLI 경로 탐색 */
-function findClaude(): string {
-  return 'claude';
-}
-
+/** Phase 2: host-runtime 어댑터 위임. */
 function findRuntimeLauncher(runtime: RuntimeHost): string {
-  return runtime === 'codex' ? 'codex' : findClaude();
+  return getHostRuntime(runtime).launcher;
 }
 
 function transcriptProjectDir(cwd: string): string {
@@ -181,11 +178,7 @@ export async function spawnClaude(
 
     child.on('error', (err) => {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        if (runtime === 'codex') {
-          reject(new Error('Codex is not installed.'));
-        } else {
-          reject(new Error('Claude Code is not installed. npm install -g @anthropic-ai/claude-code'));
-        }
+        reject(new Error(getHostRuntime(runtime).missingInstallMessage));
       } else {
         reject(err);
       }

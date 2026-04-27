@@ -16,6 +16,7 @@ import { HOOK_REGISTRY, type HookEntry, type HookEventType } from './hook-regist
 import { isHookEnabled } from './hook-config.js';
 import { detectInstalledPlugins, getHookConflicts } from '../core/plugin-detector.js';
 import { type RuntimeHost } from '../core/types.js';
+import { getHostRuntime } from '../host/host-runtime.js';
 
 // ── 타입 ──
 
@@ -64,18 +65,9 @@ function quoteArg(raw: string): string {
 
 function buildHookCommand(pluginRoot: string, rawScript: string, runtime: RuntimeHost): string {
   const { script, args } = splitCommand(rawScript);
-  const scriptPath = `${pluginRoot}/${script}`;
   const quotedArgs = args.map(quoteArg).join(' ');
-
-  if (runtime === 'codex') {
-    const adapterPath = `${pluginRoot}/host/codex-adapter.js`;
-    const baseCommand = `node ${quoteArg(adapterPath)} ${quoteArg(scriptPath)}`;
-    return `${baseCommand}${quotedArgs ? ` ${quotedArgs}` : ''}`;
-  }
-
-  return quotedArgs
-    ? `node ${quoteArg(scriptPath)} ${quotedArgs}`
-    : `node ${quoteArg(scriptPath)}`;
+  // Phase 2: host-runtime 위임 — Codex 표면 (codex-adapter 경유) 을 core 가 모르도록.
+  return getHostRuntime(runtime).wrapHookCommand(pluginRoot, script, quotedArgs);
 }
 
 /**

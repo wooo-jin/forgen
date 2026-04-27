@@ -8,6 +8,7 @@
 import { resolveLaunchContext } from './services/session.js';
 import { prepareHarness, isFirstRun } from './core/harness.js';
 import { spawnClaude } from './core/spawn.js';
+import { getHostRuntime } from './host/host-runtime.js';
 
 const args = process.argv.slice(2);
 
@@ -52,7 +53,7 @@ async function main() {
     console.log(`[forgen] Trust: ${v1.session.effective_trust_policy}`);
   }
   console.log('[forgen] Mode: dangerously-skip-permissions');
-  const runtimeLabel = runtime === 'codex' ? 'Codex' : 'Claude';
+  const runtimeLabel = getHostRuntime(runtime).displayName;
   console.log(`[forgen] Starting ${runtimeLabel}...\n`);
 
   await spawnClaude(launchArgs, context, runtime);

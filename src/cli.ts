@@ -460,7 +460,8 @@ async function main() {
   ${dim}Code, forged for you.${reset}
   ${dim}Scope: v1(${context.v1.session?.quality_pack ?? 'onboarding needed'})${reset}
 `);
-    const runtimeLabel = runtime === 'codex' ? 'Codex' : 'Claude';
+    const { getHostRuntime } = await import('./host/host-runtime.js');
+    const runtimeLabel = getHostRuntime(runtime).displayName;
     console.log(`[forgen] Starting ${runtimeLabel}...\n`);
 
     await spawnClaudeWithResume(args, context, () => prepareHarness(process.cwd(), { runtime }), runtime);
