@@ -299,16 +299,33 @@ function upsertForgenRulesInAgentsMd(opts: { agentsMdPath: string; pkgRoot: stri
   if (fs.existsSync(agentsMdPath)) {
     current = fs.readFileSync(agentsMdPath, 'utf-8');
   }
-  const reMarker = new RegExp(`${escapeRegex(AGENTS_MD_BEGIN)}[\\s\\S]*?${escapeRegex(AGENTS_MD_END)}`, 'g');
-  const hasBlock = reMarker.test(current);
-  const newContent = hasBlock
-    ? current.replace(reMarker, block)
-    : `${current.replace(/\s+$/, '')}${current.length > 0 ? '\n\n' : ''}${block}\n`;
 
-  if (dryRun) return { injected: !hasBlock || newContent !== current };
+  // Phase 3 critic fix #1: RegExp lastIndex 위험 회피 — g flag 제거 + 매번 새 RegExp.
+  const reMarker = new RegExp(`${escapeRegex(AGENTS_MD_BEGIN)}[\\s\\S]*?${escapeRegex(AGENTS_MD_END)}`);
+  const hasBlock = reMarker.test(current);
+
+  // Phase 3 critic fix #2: AGENTS.md self-heal — begin marker 만 있고 end 손상 시
+  // 누적 방지. begin 부터 파일 끝까지 + AGENTS_MD_END 미존재 = 손상으로 판단,
+  // begin 부터 파일 끝까지를 *전부* 새 block 으로 교체.
+  let newContent: string;
+  if (hasBlock) {
+    newContent = current.replace(reMarker, block);
+  } else {
+    const beginIdx = current.indexOf(AGENTS_MD_BEGIN);
+    const endIdx = current.indexOf(AGENTS_MD_END);
+    if (beginIdx !== -1 && endIdx === -1) {
+      // 손상: begin 만 있음 → begin 부터 끝까지 교체 (self-heal)
+      newContent = `${current.slice(0, beginIdx).replace(/\s+$/, '')}\n\n${block}\n`;
+    } else {
+      // 깨끗한 신규 또는 둘 다 없음 → 끝에 append
+      newContent = `${current.replace(/\s+$/, '')}${current.length > 0 ? '\n\n' : ''}${block}\n`;
+    }
+  }
+
+  if (dryRun) return { injected: newContent !== current };
   fs.mkdirSync(path.dirname(agentsMdPath), { recursive: true });
   fs.writeFileSync(agentsMdPath, newContent, 'utf-8');
-  return { injected: !hasBlock || newContent !== current };
+  return { injected: newContent !== current };
 }
 
 function escapeRegex(s: string): string {
