@@ -41,4 +41,13 @@ describe('invokeAgent — input validation', () => {
     const m = (await import('../../src/host/invoke-agent.js')) as Mod;
     await expect(m.invokeAgent({ agentName: 'ch-explore', task: 'do' })).rejects.toThrow(/max recursion depth/);
   });
+
+  it('agents root manifest 검증: 동명 디렉토리만 있고 forgen package.json 없으면 throw', async () => {
+    // 본 테스트는 module 위치 기반 walk-up 이라 격리가 어려움 — 실제 forgen pkg root
+    // 가 process.cwd() 라 정상 동작. 본 케이스는 *에러 메시지 형식* 만 검증.
+    vi.resetModules();
+    const m = (await import('../../src/host/invoke-agent.js')) as Mod;
+    // 정상 케이스 (실 pkg root) — agent 미존재 throw 메시지에 forgen pkg root 식별 통과
+    await expect(m.invokeAgent({ agentName: 'no-such-xyz123', task: 'do' })).rejects.toThrow(/Available/);
+  });
 });

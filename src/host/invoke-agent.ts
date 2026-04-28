@@ -15,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 import { execHost, type ExecHostResult } from './exec-host.js';
 
 const MAX_DEPTH = 2;
+const MAX_CONCURRENT = 3;
+let activeInvocations = 0;
 
 export interface InvokeAgentOptions {
   agentName: string;
@@ -34,16 +36,25 @@ export interface InvokeAgentResult {
 }
 
 function findAgentsRoot(): string {
-  // Find pkg root by walking up from this module's path until assets/claude/agents/ found.
+  // Phase 3 critic fix: 단순 디렉토리 매치 시 모노레포의 동명 디렉토리 위험.
+  // package.json 의 name === '@wooojin/forgen' 검증으로 *정확한 forgen pkg root* 확정.
   let dir = path.dirname(fileURLToPath(import.meta.url));
-  for (let depth = 0; depth < 6; depth += 1) {
-    const candidate = path.join(dir, 'assets', 'claude', 'agents');
-    if (fs.existsSync(candidate)) return candidate;
+  for (let depth = 0; depth < 8; depth += 1) {
+    const pkgJson = path.join(dir, 'package.json');
+    if (fs.existsSync(pkgJson)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgJson, 'utf-8'));
+        if (pkg.name === '@wooojin/forgen') {
+          const candidate = path.join(dir, 'assets', 'claude', 'agents');
+          if (fs.existsSync(candidate)) return candidate;
+        }
+      } catch { /* fallthrough — 다음 walk-up */ }
+    }
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
-  throw new Error('invoke-agent: assets/claude/agents/ not found from module location');
+  throw new Error('invoke-agent: forgen pkg root + assets/claude/agents/ not found');
 }
 
 function loadAgentDefinition(agentName: string): { systemPrompt: string; description: string } {
@@ -63,9 +74,11 @@ function loadAgentDefinition(agentName: string): { systemPrompt: string; descrip
     );
   }
   const raw = fs.readFileSync(filePath, 'utf-8');
-  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  // Phase 3 critic fix: BOM + CRLF 정규화 (Windows / Notion 파일 호환)
+  const normalized = raw.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  const fmMatch = normalized.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   const description = fmMatch?.[1].match(/description:\s*(.+)/)?.[1].trim() ?? safeName;
-  const body = fmMatch?.[2]?.trim() ?? raw;
+  const body = fmMatch?.[2]?.trim() ?? normalized;
   return { systemPrompt: body, description };
 }
 
@@ -85,29 +98,43 @@ function buildAgentPrompt(opts: { agentName: string; description: string; system
 }
 
 export async function invokeAgent(opts: InvokeAgentOptions): Promise<InvokeAgentResult> {
-  // Recursion guard
+  // Phase 3 critic fix: depth 외에 fan-out 도 제한.
+  // depth 2 에서 N 개 sibling invoke 가 동시 시작되면 N² child spawn 가능 →
+  // 비용/timeout cascading. process-level concurrency limit MAX_CONCURRENT 로 제한.
   const currentDepth = parseInt(process.env.FORGEN_INVOKE_DEPTH ?? '0', 10);
   if (currentDepth >= MAX_DEPTH) {
     throw new Error(`invoke-agent: max recursion depth ${MAX_DEPTH} exceeded (current=${currentDepth})`);
+  }
+  if (activeInvocations >= MAX_CONCURRENT) {
+    throw new Error(
+      `invoke-agent: max concurrent invocations ${MAX_CONCURRENT} reached (active=${activeInvocations}). ` +
+      'Sibling sub-agents must run sequentially.',
+    );
   }
 
   const { systemPrompt, description } = loadAgentDefinition(opts.agentName);
   const prompt = buildAgentPrompt({ agentName: opts.agentName, description, systemPrompt, task: opts.task });
 
   const startedAt = Date.now();
-  const result = execHost({
-    prompt,
-    timeout: opts.timeoutMs ?? 60000,
-    host: opts.host,
-    env: { FORGEN_INVOKE_DEPTH: String(currentDepth + 1) },
-  });
-  const durationMs = Date.now() - startedAt;
-
-  return {
-    agentName: opts.agentName,
-    host: result.host,
-    summary: result.message,
-    durationMs,
-    usage: result.usage,
-  };
+  activeInvocations += 1;
+  try {
+    // Phase 3 critic fix: default timeout 60s → 90s (codex sandbox startup +
+    // 인증 + LLM 응답까지 60s 부족할 수 있음. tail latency 안전마진).
+    const result = execHost({
+      prompt,
+      timeout: opts.timeoutMs ?? 90000,
+      host: opts.host,
+      env: { FORGEN_INVOKE_DEPTH: String(currentDepth + 1) },
+    });
+    const durationMs = Date.now() - startedAt;
+    return {
+      agentName: opts.agentName,
+      host: result.host,
+      summary: result.message,
+      durationMs,
+      usage: result.usage,
+    };
+  } finally {
+    activeInvocations -= 1;
+  }
 }
