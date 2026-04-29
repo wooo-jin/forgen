@@ -7,8 +7,8 @@
     "name": "jang-ujin",
     "url": "https://github.com/wooo-jin"
   },
-  "repository": "https://github.com/wooo-jin/forgen",
-  "homepage": "https://github.com/wooo-jin/forgen",
+  "repository": "https://github.com/forgen-team/forgen",
+  "homepage": "https://github.com/forgen-team/forgen",
   "license": "MIT",
   "keywords": [
     "claude-code",
