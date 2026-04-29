@@ -13,7 +13,7 @@
 
 ### Option 1: GitHub Security Advisories (Preferred)
 
-Use GitHub's private [Security Advisories](https://github.com/wooo-jin/forgen/security/advisories/new) to report vulnerabilities confidentially.
+Use GitHub's private [Security Advisories](https://github.com/forgen-team/forgen/security/advisories/new) to report vulnerabilities confidentially.
 
 ### Option 2: Email
 

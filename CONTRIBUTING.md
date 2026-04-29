@@ -5,7 +5,7 @@ Thank you for your interest in contributing! forgen is a philosophy-driven Claud
 ## Quick Start
 
 ```bash
-git clone https://github.com/wooo-jin/forgen.git
+git clone https://github.com/forgen-team/forgen.git
 cd forgen
 npm install
 npm run build
@@ -95,4 +95,4 @@ forgen is built around five principles: `understand-before-act`, `decompose-to-c
 
 ## Questions
 
-Open a [GitHub Issue](https://github.com/wooo-jin/forgen/issues) for questions, bug reports, or feature proposals.
+Open a [GitHub Issue](https://github.com/forgen-team/forgen/issues) for questions, bug reports, or feature proposals.

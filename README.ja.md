@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/wooo-jin/forgen/main/assets/banner.png" alt="Forgen" width="100%"/>
+  <img src="https://raw.githubusercontent.com/forgen-team/forgen/main/assets/banner.png" alt="Forgen" width="100%"/>
 </p>
 
 <p align="center">

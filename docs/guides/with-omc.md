@@ -29,7 +29,7 @@ At `npm install` time, forgen's postinstall script detects OMC by checking for `
 - **settings.json writes**: Both plugins may write to `~/.claude/settings.json`. Forgen uses a backup+lock pattern to avoid data loss, but concurrent writes from OMC are not coordinated.
 - **Context budget**: When OMC is detected, forgen halves its solution injection budget (from 3 to 1 solution per prompt, session max reduced 50%). This may still be too much combined context.
 
-If you try this combination, please report your experience via [GitHub Issues](https://github.com/wooo-jin/forgen/issues).
+If you try this combination, please report your experience via [GitHub Issues](https://github.com/forgen-team/forgen/issues).
 
 ## When to Use What
 
